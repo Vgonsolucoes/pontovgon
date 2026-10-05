@@ -25,7 +25,7 @@ ENV NEXT_BUILT=1
 RUN npm run build || npm run build
 
 # ---------- RUNNER ----------
-FROM node:${NODE_VERSION}-slim AS runner
+FROM node:${NODE_VERSION} AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production \
@@ -33,12 +33,10 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates openssl tini \
-  && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates openssl tini libc6-compat
 
-RUN addgroup --system --gid 1001 nodejs \
-  && adduser --system --uid 1001 nextjs
+RUN addgroup -S -g 1001 nodejs \
+  && adduser -S -u 1001 -G nodejs nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
@@ -53,5 +51,5 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "server.js"]
