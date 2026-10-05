@@ -1,0 +1,53 @@
+# deps
+node_modules
+.pnp
+.pnp.js
+
+# build
+.next
+out
+dist
+build
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# typescript cache
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# db/prisma
+prisma/dev.db
+prisma/dev.db-journal
+*.db
+*.sqlite
+*.sqlite-journal
+
+# ide
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# runtime
+coverage
+.turbo
+.eslintcache
+
+# agent local
+agent/*.db
+agent/data
+agent/logs
+agent/dist
+agent/node_modules
+agent.config.json

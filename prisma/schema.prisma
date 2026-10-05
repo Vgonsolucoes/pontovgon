@@ -1,0 +1,564 @@
+// ================================================================
+// VGON PONTO - Prisma Schema (PostgreSQL)
+// Timezone padrão do app: America/Sao_Paulo
+// Todos os campos de data/hora com @db.Timestamptz para armazenar UTC,
+// convertidos em aplicação pelo date-fns-tz.
+// ================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================================================================
+// ENUMS
+// ================================================================
+
+enum UserRole {
+  MASTER
+  ADMIN
+  RH
+  GESTOR
+  FUNCIONARIO
+}
+
+enum EmployeeStatus {
+  ATIVO
+  FERIAS
+  AFASTADO
+  DESLIGADO
+}
+
+enum TimeEntryOrigin {
+  IDFACE
+  MANUAL
+  ADMINISTRATIVO
+  WEB
+  APP
+}
+
+enum TimeEntryStatus {
+  VALIDO
+  AJUSTADO
+  INCONSISTENTE
+  EXCLUIDO_LOGICAMENTE
+}
+
+enum RequestStatus {
+  PENDENTE
+  APROVADO
+  REPROVADO
+}
+
+enum LeaveType {
+  FERIAS
+  ATESTADO
+  AFASTAMENTO
+  FOLGA
+  COMPENSACAO
+}
+
+enum CommandStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  MANUTENCAO
+  DESATIVADO
+}
+
+enum AgentStatus {
+  ONLINE
+  OFFLINE
+  SYNCING
+  AUTH_ERROR
+  API_OFFLINE
+}
+
+// ================================================================
+// USERS / AUTH
+// ================================================================
+
+model users {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String?
+  role          UserRole @default(FUNCIONARIO)
+  employeeId    String?  @unique
+  active        Boolean  @default(true)
+  lastLoginAt   DateTime? @db.Timestamptz
+  avatarUrl     String?
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+  deletedAt     DateTime? @db.Timestamptz
+
+  employee      employees?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  audit_logs    audit_logs[]
+  created_requests   time_entry_requests[] @relation("RequestCreator")
+  evaluated_requests time_entry_requests[] @relation("RequestEvaluator")
+  created_adjustments time_entry_adjustments[] @relation("AdjustmentCreator")
+  approved_adjustments time_entry_adjustments[] @relation("AdjustmentApprover")
+}
+
+// ================================================================
+// CADASTROS BASE - SETORES, CARGOS, JORNADAS
+// ================================================================
+
+model departments {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now()) @db.Timestamptz
+  updatedAt   DateTime    @updatedAt @db.Timestamptz
+  deletedAt   DateTime?   @db.Timestamptz
+
+  positions   positions[]
+  employees   employees[]
+  @@index([active])
+  @@unique([name])
+}
+
+model positions {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  departmentId String?
+  cbo         String?
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now()) @db.Timestamptz
+  updatedAt   DateTime    @updatedAt @db.Timestamptz
+  deletedAt   DateTime?   @db.Timestamptz
+
+  department  departments? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  employees   employees[]
+  @@index([active])
+  @@unique([name, departmentId])
+}
+
+enum WorkScheduleModel {
+  CINCOXDOIS   // 5x2
+  SEISXUM      // 6x1
+  DOZEXTRINTASEIS // 12x36
+  PERSONALIZADA
+}
+
+model work_schedules {
+  id              String            @id @default(cuid())
+  name            String
+  model           WorkScheduleModel @default(CINCOXDOIS)
+  toleranceMinutes Int             @default(5)
+  dailyLoadMinutes Int             @default(480)  // 8h
+  weeklyLoadMinutes Int            @default(2200) // 44h
+  active          Boolean          @default(true)
+  observations    String?
+  createdAt       DateTime         @default(now()) @db.Timestamptz
+  updatedAt       DateTime         @updatedAt    @db.Timestamptz
+  deletedAt       DateTime?        @db.Timestamptz
+
+  days            work_schedule_days[]
+  employees       employees[]
+  @@unique([name])
+}
+
+model work_schedule_days {
+  id               String   @id @default(cuid())
+  workScheduleId   String
+  weekday          Int      // 0=domingo 1=seg ... 6=sabado
+  isDayOff         Boolean  @default(false)
+  entryTime        String?  // HH:mm
+  breakStartTime   String?  // HH:mm
+  breakEndTime     String?  // HH:mm
+  departureTime    String?  // HH:mm
+  createdAt        DateTime @default(now()) @db.Timestamptz
+  updatedAt        DateTime @updatedAt @db.Timestamptz
+
+  workSchedule     work_schedules @relation(fields: [workScheduleId], references: [id], onDelete: Cascade)
+  @@unique([workScheduleId, weekday])
+  @@index([workScheduleId])
+}
+
+// ================================================================
+// FUNCIONÁRIOS E ESCALAS
+// ================================================================
+
+model employees {
+  id                   String         @id @default(cuid())
+  name                 String
+  photoUrl             String?
+  cpf                  String         @unique
+  registration         String         @unique
+  email                String?
+  phone                String?
+  positionId           String?
+  departmentId         String?
+  workScheduleId       String?
+  managerId            String?
+  admissionDate        DateTime?      @db.Date
+  status               EmployeeStatus @default(ATIVO)
+  externalIdDevice     String?        // ID do funcionário no iDFace (ex: user_id do equipamento)
+  observations         String?
+  createdAt            DateTime       @default(now()) @db.Timestamptz
+  updatedAt            DateTime       @updatedAt    @db.Timestamptz
+  deletedAt            DateTime?      @db.Timestamptz
+
+  position             positions?      @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  department           departments?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  workSchedule         work_schedules? @relation(fields: [workScheduleId], references: [id], onDelete: SetNull)
+  manager              employees?      @relation("ManagerTeam", fields: [managerId], references: [id], onDelete: SetNull)
+  subordinates         employees[]     @relation("ManagerTeam")
+  user                 users?
+  device_users         device_users[]
+  time_entries         time_entries[]
+  work_days            work_days[]
+  hour_bank            hour_bank[]
+  requests             time_entry_requests[] @relation("RequestEmployee")
+  adjustments          time_entry_adjustments[]
+  vacations            vacations[]
+  leaves               leaves[]
+  @@index([departmentId])
+  @@index([status])
+}
+
+// ================================================================
+// DISPOSITIVOS / AGENTS
+// ================================================================
+
+model devices {
+  id                String       @id @default(cuid())
+  name              String
+  manufacturer      String       @default("Control iD")
+  model             String       @default("iDFace")
+  serialNumber      String       @unique
+  firmwareVersion   String?
+  firmwareSecBox    String?
+  macAddress        String?
+  deviceUniqueId    String?      @unique // Device ID do equipamento
+  location          String?
+  status            DeviceStatus @default(ONLINE)
+  agentId           String?
+  lastCommunication DateTime?    @db.Timestamptz
+  lastEntryAt       DateTime?    @db.Timestamptz // última marcação recebida
+  config            Json?        // credenciais são armazenadas aqui apenas em Agent remoto; não use no server cloud em produção com texto plano real; use colunas criptografadas ou Vault em produção
+  createdAt         DateTime     @default(now()) @db.Timestamptz
+  updatedAt         DateTime     @updatedAt    @db.Timestamptz
+  deletedAt         DateTime?    @db.Timestamptz
+
+  agent             agents?      @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  device_users      device_users[]
+  time_entries      time_entries[]
+  sync_logs         device_sync_logs[]
+}
+
+model device_users {
+  id          String   @id @default(cuid())
+  deviceId    String
+  employeeId  String?
+  externalId  String   // user_id no equipamento
+  biometricsRegistered Boolean @default(false)
+  active      Boolean  @default(true)
+  lastSyncAt  DateTime? @db.Timestamptz
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+
+  device      devices    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  employee    employees? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  @@unique([deviceId, externalId])
+  @@index([employeeId])
+}
+
+model agents {
+  id                String      @id @default(cuid())
+  token             String      @unique // Token de autenticação deste agente (hash ou valor opaco). Usado em conjunto com header/query.
+  name              String
+  version           String?
+  computerName      String?
+  localIp           String?
+  osVersion         String?
+  lastHeartbeatAt   DateTime?   @db.Timestamptz
+  lastSyncAt        DateTime?   @db.Timestamptz
+  status            AgentStatus @default(OFFLINE)
+  syncIntervalSec   Int         @default(30)
+  enabled           Boolean     @default(true)
+  createdAt         DateTime    @default(now()) @db.Timestamptz
+  updatedAt         DateTime    @updatedAt @db.Timestamptz
+  deletedAt         DateTime?   @db.Timestamptz
+
+  devices           devices[]
+  heartbeats        agent_heartbeats[]
+  sync_logs         device_sync_logs[]
+  commands          commands[]
+}
+
+model agent_heartbeats {
+  id               String   @id @default(cuid())
+  agentId          String
+  sentAt           DateTime @default(now()) @db.Timestamptz
+  version          String?
+  computerName     String?
+  localIp          String?
+  osVersion        String?
+  deviceStatus     DeviceStatus?
+  deviceLastComm   DateTime? @db.Timestamptz
+  deviceLastSync   DateTime? @db.Timestamptz
+  pendingEvents    Int      @default(0)
+  agentStatus      AgentStatus?
+  raw              Json?
+
+  agent            agents @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([agentId, sentAt])
+}
+
+model device_sync_logs {
+  id          String   @id @default(cuid())
+  agentId     String?
+  deviceId    String?
+  startedAt   DateTime  @default(now()) @db.Timestamptz
+  finishedAt  DateTime? @db.Timestamptz
+  eventsCount Int      @default(0)
+  newEvents   Int      @default(0)
+  duplicate   Int      @default(0)
+  failed      Int      @default(0)
+  status      String   // "SUCCESS" / "FAILED" / "PARTIAL"
+  error       String?
+  created_at  DateTime @default(now()) @db.Timestamptz
+
+  agent       agents?  @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  device      devices? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  @@index([startedAt])
+}
+
+model commands {
+  id         String        @id @default(cuid())
+  agentId    String
+  commandType String       // "SYNC_USERS" | "SYNC_TIME_ENTRIES_NOW" | "DEVICE_TEST" | "SET_USER" | "DISABLE_USER" ...
+  payload    Json?
+  status     CommandStatus @default(PENDING)
+  result     Json?
+  error      String?
+  pickedAt   DateTime?     @db.Timestamptz
+  finishedAt DateTime?     @db.Timestamptz
+  attempts   Int           @default(0)
+  createdAt  DateTime      @default(now()) @db.Timestamptz
+  updatedAt  DateTime      @updatedAt @db.Timestamptz
+
+  agent      agents @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([agentId, status])
+  @@index([status])
+}
+
+// ================================================================
+// MARCAÇÕES, DIAS DE TRABALHO, AJUSTES, BANCO DE HORAS
+// ================================================================
+
+model time_entries {
+  id                String          @id @default(cuid())
+  employeeId        String?
+  deviceId          String?
+  externalEventId   String?         // identificador do evento no equipamento (ex: log_id)
+  date              DateTime        @db.Date
+  time              String          // HH:mm
+  timestamp         DateTime?       @db.Timestamptz
+  kind              String?         // "IN"/"OUT"/"BREAK_OUT"/"BREAK_IN" / ou tipo do evento do dispositivo
+  origin            TimeEntryOrigin @default(IDFACE)
+  originalEventRef  String?         // referência original para debug
+  importedAt        DateTime        @default(now()) @db.Timestamptz
+  status            TimeEntryStatus @default(VALIDO)
+  note              String?
+
+  employee          employees? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  device            devices?   @relation(fields: [deviceId],   references: [id], onDelete: SetNull)
+  adjustments       time_entry_adjustments[]
+
+  @@index([employeeId, date])
+  @@index([deviceId, importedAt])
+  // Prevenção de duplicidade (MODELO B)
+  @@unique([deviceId, externalEventId])
+  @@unique([origin, employeeId, date, time])
+}
+
+model time_entry_requests {
+  id             String         @id @default(cuid())
+  employeeId     String
+  createdById    String
+  evaluatedById  String?
+  date           DateTime       @db.Date
+  time           String?        // HH:mm
+  type           String         // "IN_ADJUST" | "OUT_ADJUST" | "BREAK_IN" | "BREAK_OUT" | "JUSTIFICATION"
+  justification  String?
+  status         RequestStatus  @default(PENDENTE)
+  evaluatorNote  String?
+  createdAt      DateTime       @default(now()) @db.Timestamptz
+  evaluatedAt    DateTime?      @db.Timestamptz
+
+  employee       employees         @relation("RequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy      users             @relation("RequestCreator",   fields: [createdById],   references: [id], onDelete: Restrict)
+  evaluatedBy    users?            @relation("RequestEvaluator", fields: [evaluatedById], references: [id], onDelete: SetNull)
+  adjustments    time_entry_adjustments[]
+  @@index([employeeId, status])
+  @@index([status, createdAt])
+}
+
+model time_entry_adjustments {
+  id               String         @id @default(cuid())
+  employeeId       String
+  requestId        String?
+  createdById      String
+  approvedById     String?
+  date             DateTime       @db.Date
+  target           String         // "IN" / "OUT1" / "IN2" / "OUT2" ...
+  previousTime     String?        // HH:mm original
+  newTime          String         // HH:mm ajustado
+  note             String?
+  createdAt        DateTime       @default(now()) @db.Timestamptz
+  approvedAt       DateTime?      @db.Timestamptz
+
+  employee         employees             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  request          time_entry_requests?  @relation(fields: [requestId],  references: [id], onDelete: SetNull)
+  createdBy        users                 @relation("AdjustmentCreator",  fields: [createdById],  references: [id], onDelete: Restrict)
+  approvedBy       users?                @relation("AdjustmentApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  time_entries     time_entries[]
+  @@index([employeeId, date])
+}
+
+model work_days {
+  id                      String    @id @default(cuid())
+  employeeId              String
+  date                    DateTime  @db.Date
+  expectedMinutes         Int       @default(0)
+  workedMinutes           Int       @default(0)
+  breakMinutes            Int       @default(0)
+  lateMinutes             Int       @default(0)
+  earlyLeaveMinutes       Int       @default(0)
+  overtimeMinutes         Int       @default(0)   // horas extras (positivo)
+  debitMinutes            Int       @default(0)   // débito (atraso/saída antecipada)
+  dailyBalanceMinutes     Int       @default(0)   // saldo do dia (overtime - debit)
+  absenceJustified        Boolean   @default(false)
+  absenceReason           String?   // FERIAS | FERIADO | ATESTADO etc
+  hasIncompleteRecords    Boolean   @default(false)
+  note                    String?
+  recalculatedAt          DateTime? @db.Timestamptz
+  createdAt               DateTime  @default(now()) @db.Timestamptz
+  updatedAt               DateTime  @updatedAt @db.Timestamptz
+
+  employee                employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  hour_bank_movements     hour_bank[]
+  @@unique([employeeId, date])
+  @@index([date])
+}
+
+model hour_bank {
+  id             String     @id @default(cuid())
+  employeeId     String
+  date           DateTime   @db.Date
+  deltaMinutes   Int        // + positivo = credito / - negativo = debito
+  balanceMinutes Int        // saldo acumulado apos essa movimentacao
+  origin         String     // "DAILY_CALC" | "MANUAL_ADJUST" | "REQUEST_APPROVED" ...
+  workDayId      String?
+  note           String?
+  createdById    String?
+  createdAt      DateTime   @default(now()) @db.Timestamptz
+
+  employee       employees  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  workDay        work_days? @relation(fields: [workDayId],  references: [id], onDelete: SetNull)
+  @@index([employeeId, date])
+}
+
+// ================================================================
+// FÉRIAS, AFASTAMENTOS, FERIADOS
+// ================================================================
+
+model vacations {
+  id           String    @id @default(cuid())
+  employeeId   String
+  startDate    DateTime  @db.Date
+  endDate      DateTime  @db.Date
+  daysCount    Int
+  bonusAmount  Decimal?  @db.Decimal(12,2)
+  allowance    Decimal?  @db.Decimal(12,2)
+  status       RequestStatus @default(APROVADO)
+  observations String?
+  approvedById String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @db.Timestamptz
+
+  employee     employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  @@index([employeeId, startDate])
+}
+
+model leaves {
+  id           String    @id @default(cuid())
+  employeeId   String
+  type         LeaveType
+  startDate    DateTime  @db.Date
+  endDate      DateTime  @db.Date
+  daysCount    Int
+  hoursCount   Int       @default(0) // atestado de horas
+  justificationDoc String?
+  status       RequestStatus @default(APROVADO)
+  approvedById String?
+  reason       String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @db.Timestamptz
+
+  employee     employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  @@index([employeeId, startDate])
+  @@index([type, startDate])
+}
+
+model holidays {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  description String
+  scope       String   @default("NACIONAL") // NACIONAL | ESTADUAL | MUNICIPAL | EMPRESARIAL
+  recurring   Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  @@unique([date, scope])
+  @@index([date])
+}
+
+// ================================================================
+// AUDITORIA
+// ================================================================
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  SOFT_DELETE
+  RESTORE
+  APPROVE
+  REJECT
+  ADJUST
+  MANUAL_ENTRY
+  SYNC
+}
+
+model audit_logs {
+  id         String      @id @default(cuid())
+  userId     String?
+  actorEmail String?
+  action     AuditAction
+  entity     String
+  entityId   String?
+  ip         String?
+  userAgent  String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime    @default(now()) @db.Timestamptz
+
+  user       users?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@index([entity, entityId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
