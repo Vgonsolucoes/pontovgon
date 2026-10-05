@@ -1,0 +1,55 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vgonponto-web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vgonponto}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-vgon_ponto}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:-change-this-on-easypanel}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/auth/csrf"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - vgonponto-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: vgonponto-postgres
+    restart: unless-stopped
+    shm_size: 256mb
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vgon_ponto}
+      POSTGRES_USER: ${POSTGRES_USER:-vgonponto}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vgonponto} -d ${POSTGRES_DB:-vgon_ponto}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    networks:
+      - vgonponto-net
+
+volumes:
+  postgres_data:
+
+networks:
+  vgonponto-net:
+    driver: bridge
