@@ -45,13 +45,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/package-lock.json* ./
+COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh ./entrypoint.sh
 
-RUN chown -R nextjs:nodejs /app
+RUN chmod +x /app/entrypoint.sh \
+  && chown -R nextjs:nodejs /app
 
 USER nextjs
 
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--", "/app/entrypoint.sh"]
 CMD ["node", "server.js"]
