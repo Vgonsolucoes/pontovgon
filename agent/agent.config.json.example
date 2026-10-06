@@ -1,0 +1,23 @@
+{
+  "$schema": "./agent.config.schema.json",
+  "apiUrl": "https://vgonponto-web.54myeq.easypanel.host",
+  "agentToken": "COLOQUE_SEU_AGENT_TOKEN_AQUI",
+  "syncIntervalSec": 30,
+  "pollCommandsIntervalSec": 30,
+  "heartbeatIntervalSec": 30,
+  "mock": false,
+  "dbPath": "./data/agent.db",
+  "logLevel": "info",
+  "idface": {
+    "url": "http://192.168.1.150",
+    "port": 80,
+    "user": "admin",
+    "password": "admin",
+    "deviceId": "4408801109279099",
+    "deviceSerialNumber": "0M0200/01017B",
+    "deviceFirmware": "6.18.6",
+    "deviceMac": "FC:52:CE:8A:B9:91",
+    "readEventsBatchSize": 500,
+    "readEventsFromMinutesAgo": 1440
+  }
+}

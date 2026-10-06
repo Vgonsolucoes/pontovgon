@@ -1,0 +1,35 @@
+{
+  "name": "vgon-ponto-agent",
+  "version": "0.1.0",
+  "description": "VGON PONTO Agent Local (MODELO B) — iDFace LAN -> SQLite fila -> HTTPS API idempotente + Command Queue polled",
+  "private": true,
+  "author": "Vgon Soluções",
+  "license": "Proprietary",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "start:mock": "set MOCK=true&& tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "service:install": "tsx src/scripts/install-windows-service.ts",
+    "service:uninstall": "tsx src/scripts/uninstall-windows-service.ts"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "better-sqlite3": "^11.3.0",
+    "croner": "^8.1.1",
+    "pino": "^9.4.0",
+    "pino-pretty": "^11.2.2",
+    "tsx": "^4.19.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.16.11",
+    "node-windows": "^1.0.0-beta.8",
+    "typescript": "^5.6.2"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}
