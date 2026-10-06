@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v33_fix_tx_implicit_any_commands_next_handler
+ARG BUILDKIT_CACHE_BUST=20261006_v34_simplificar_builder_run_build_3_comandos_sem_debug
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -35,7 +35,7 @@ RUN apk add --no-cache openssl ca-certificates libc6-compat \
 # INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
 # A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
 # ============================================================
-RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_33_FIX_TX_IMPLICIT_ANY_COMMANDS_NEXT_WRAPPER_SIMPLIFICADO"
+RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_34_SIMPLIFICAR_BUILDER_RUN_BUILD_SEM_DEBUG"
 
 COPY . .
 
@@ -46,37 +46,16 @@ RUN echo "=== [BUILDER v27] ARQUIVOS PAGE/ROUTE APOS COPY . . ===" \
   && du -sh /app/app 2>/dev/null || true
 
 # Prisma generate
-RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_33_FIX_TX_IMPLICIT_ANY_COMMANDS_NEXT" \
+RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_34_SIMPLIFICAR_RUN_BUILD" \
   && openssl version \
   && npx prisma generate \
   && find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true \
-  && echo "=== PRISMA ENGINE APOS GENERATE + LIMPEZA (BUILDER DEPLOY 33) ===" \
   && ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
 
 ENV NEXT_BUILT=1
 RUN npm run build \
-  && echo "=== [BUILDER v33 DEPLOY 33: NFT wrappers leves] ROTAS GERADAS NO .next/server/app ===" \
-  && (find /app/.next/server/app -maxdepth 6 -type f 2>/dev/null | sort | head -80 || true) \
-  && echo "=== .next/standalone contents ===" \
-  && ls -la /app/.next/standalone/ 2>/dev/null \
-  && echo "=== BEFORE MANUAL FIX: standalone .next/server/app/api ===" \
-  && (ls -laR /app/.next/standalone/.next/server/app/api 2>/dev/null || echo "--- .next/standalone/.next/server/app/api NAO EXISTE ---") \
-  && echo "=== ASSERT .next/standalone/server.js EXISTE ===" \
   && test -f /app/.next/standalone/server.js \
-  && echo "STANDALONE OK (server.js found)" \
-  && echo "=== MANUAL NFT FIX (fallback wrapper leve + entrypoint runtime) ===" \
-  && mkdir -p /app/.next/standalone/.next/server/app/api \
-  && if [ -d /app/.next/server/app/api/agents ]; then \
-       rm -rf /app/.next/standalone/.next/server/app/api/agents 2>/dev/null || true && \
-       cp -R /app/.next/server/app/api/agents /app/.next/standalone/.next/server/app/api/ 2>/dev/null && \
-       echo "MANUAL CP OK: api/agents copiado fallback"; \
-     else \
-       echo "AVISO: /app/.next/server/app/api/agents NAO ENCONTRADO. Wrappers leves devem ter resolvido NFT. Entrypoint.sh runtime tenta novamente."; \
-     fi \
-  && (cp -R /app/.next/server/app/api/auth /app/.next/standalone/.next/server/app/api/ 2>/dev/null || true) \
-  && echo "=== AFTER MANUAL FIX: standalone .next/server/app/api ===" \
-  && (find /app/.next/standalone/.next/server/app/api -maxdepth 5 -type f -name "route.js" 2>/dev/null | sort || true) \
-  && echo "DEPLOY 33 BUILD OK NFT FIX WRAPPERS + TX IMPLICIT ANY FIXADO"
+  && echo "BUILD OK: Next.js standalone gerado"
 
 # ---------- RUNNER ----------
 FROM node:${NODE_VERSION} AS runner
