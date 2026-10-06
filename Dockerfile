@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v22_force_rebuild
+ARG BUILDKIT_CACHE_BUST=20261006_v23_force_rebuild_agents
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
