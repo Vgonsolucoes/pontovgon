@@ -7,6 +7,17 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
+    outputFileTracingIncludes: {
+      "/api/agents/**/*": ["./app/api/agents/**/*"],
+    },
+    outputFileTracingExcludes: {
+      "*": [
+        "./node_modules/@swc/core-linux-x64-gnu",
+        "./node_modules/@swc/core-linux-x64-musl",
+        "./node_modules/@esbuild/linux-x64",
+        "./node_modules/uglify-js",
+      ],
+    },
   },
   images: {
     remotePatterns: [],
