@@ -85,10 +85,10 @@ async function loadAgents(): Promise<AgentRow[]> {
     },
     orderBy: [{ enabled: "desc" }, { createdAt: "desc" }],
   });
-  return rows.map((r) => ({
+  return rows.map((r: any) => ({
     ...r,
     pendingCount: r.heartbeats[0]?.pendingEvents ?? 0,
-  }));
+  })) as AgentRow[];
 }
 
 function fmtDate(d: Date | null): string {

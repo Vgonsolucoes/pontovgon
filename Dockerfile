@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v28_nft_outputFileTracingIncludes_plus_manual_cp_api_agents
+ARG BUILDKIT_CACHE_BUST=20261006_v29_tsfix_agents_page_r_implicit_any_plus_nft_dual_fix
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -28,7 +28,7 @@ COPY --from=deps /app/node_modules ./node_modules
 # INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
 # A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
 # ============================================================
-RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_28_NFT_MANUAL_CP_API_AGENTS_OK"
+RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_29_TSFIX_R_IMPLICIT_ANY_NFT_MANUAL_CP_OK"
 
 COPY . .
 
