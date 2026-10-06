@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v31_fix_runtime_nft_entrypoint_cp_api_agents_no_manifest
+ARG BUILDKIT_CACHE_BUST=20261006_v32_fix_nft_api_agents_wrapper_leves_dynamic_import_handler
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -35,7 +35,7 @@ RUN apk add --no-cache openssl ca-certificates libc6-compat \
 # INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
 # A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
 # ============================================================
-RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_31_NFT_FIX_RUNTIME_ENTRYPOINT_API_AGENTS_COPY_OK"
+RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_32_NFT_FIX_WRAPPER_LEVES_API_AGENTS_DYNAMIC_IMPORT_OK"
 
 COPY . .
 
@@ -46,17 +46,17 @@ RUN echo "=== [BUILDER v27] ARQUIVOS PAGE/ROUTE APOS COPY . . ===" \
   && du -sh /app/app 2>/dev/null || true
 
 # Prisma generate
-RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_31_ENTRYPOINT_NFT_RUNTIME" \
+RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_32_WRAPPER_LEVES_API_AGENTS_DYNAMIC_IMPORT" \
   && openssl version \
   && npx prisma generate \
   && find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true \
-  && echo "=== PRISMA ENGINE APOS GENERATE + LIMPEZA (BUILDER DEPLOY 31) ===" \
+  && echo "=== PRISMA ENGINE APOS GENERATE + LIMPEZA (BUILDER DEPLOY 32) ===" \
   && ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
 
 # Build Next.js standalone (ASSERT: .next/standalone/server.js DEVE existir no fim)
 ENV NEXT_BUILT=1
 RUN npm run build \
-  && echo "=== [BUILDER v31 DEPLOY 31 FIX RUNTIME NFT] ROTAS GERADAS NO .next/server/app ===" \
+  && echo "=== [BUILDER v32 DEPLOY 32 NFT FIX WRAPPER LEVES API AGENTS] ROTAS GERADAS NO .next/server/app ===" \
   && (find /app/.next/server/app -maxdepth 6 -type f 2>/dev/null | sort | head -80 || true) \
   && echo "=== .next/standalone contents ===" \
   && ls -la /app/.next/standalone/ 2>/dev/null \
