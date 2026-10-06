@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v42_runner_copy_builder_nft_always_exists_dir
+ARG BUILDKIT_CACHE_BUST=20261006_v43_remove_chown_app_operation_not_permitted
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -35,7 +35,7 @@ RUN apk add --no-cache openssl ca-certificates libc6-compat \
 # INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
 # A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
 # ============================================================
-RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_42_BUILDER_NFT_DIR_ALWAYS_EXIST"
+RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_43_REMOVE_CHOWN_APP_NO_PERMISSION"
 
 COPY . .
 
@@ -46,7 +46,7 @@ RUN echo "=== [BUILDER v27] ARQUIVOS PAGE/ROUTE APOS COPY . . ===" \
   && du -sh /app/app 2>/dev/null || true
 
 # Prisma generate
-RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_42_RUNNER_NO_COPY_FAIL" \
+RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_43_USER_NEXTJS_NAO_CHOWN_ROOT_DIR" \
   && openssl version \
   && npx prisma generate \
   && find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true \
@@ -96,21 +96,20 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/package-lock.json* ./
 COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh ./entrypoint.sh
 
-# === DEPLOY 42 NFT FIX RUNTIME: /tmp/builder-nft builder sempre existe (dir vazio se Pages Router) ===
+# === DEPLOY 43 NFT FIX RUNTIME: /tmp/builder-nft builder sempre existe (dir vazio se Pages Router) ===
 USER root
 RUN mkdir -p /tmp/nft-originals \
-  && echo "=== DEPLOY 42 NFT FIX: copia builder /tmp/builder-nft p/ runner /tmp/nft-originals ==="
+  && echo "=== DEPLOY 43 NFT FIX: copia builder /tmp/builder-nft p/ runner /tmp/nft-originals ==="
 COPY --from=builder /tmp/builder-nft /tmp/nft-originals
-RUN echo "=== /tmp/nft-originals contents:" && find /tmp/nft-originals -maxdepth 5 -type f 2>/dev/null | sort | head -20 || true
-RUN chown -R 1001:1001 /tmp/nft-originals
+RUN echo "=== /tmp/nft-originals contents:" && find /tmp/nft-originals -maxdepth 5 -type f 2>/dev/null | sort | head -20 || true \
+  && chown -R 1001:1001 /tmp/nft-originals \
+  && chmod +x /app/entrypoint.sh \
+  && chown -R nextjs:nodejs /app
 USER nextjs
 
 # Remocao final openssl 1.1
 RUN find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true
 RUN ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
-
-RUN chmod +x /app/entrypoint.sh \
-  && chown -R nextjs:nodejs /app
 
 USER nextjs
 
