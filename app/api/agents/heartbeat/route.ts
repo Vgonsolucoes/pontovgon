@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
           deviceLastSync: body.deviceLastSync,
           pendingEvents: body.pendingEvents,
           agentStatus: body.agentStatus,
-          raw: body.raw ?? Prisma.JsonNull,
+          raw: (body.raw ?? null) as any,
         },
         select: { id: true, sentAt: true },
       }),

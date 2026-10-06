@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v29_tsfix_agents_page_r_implicit_any_plus_nft_dual_fix
+ARG BUILDKIT_CACHE_BUST=20261006_v30_fix_prisma_jsonnull_removed_v5_builder_openssl3_installed
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -24,11 +24,18 @@ ENV CACHE_BUST=${BUILDKIT_CACHE_BUST}
 ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
 COPY --from=deps /app/node_modules ./node_modules
 
+# === DEPLOY 30 FIX: INSTALAR OPENSSL NO BUILDER ANTES DO PRISMA GENERATE ===
+# Sem openssl aqui, Prisma detecta errado → gera engine openssl-1.1.x e falha
+# pois nosso ENV força PRISMA_QUERY_ENGINE_LIBRARY=openssl-3.0.x
+RUN apk add --no-cache openssl ca-certificates libc6-compat \
+  && echo "=== OPENSSL VERSION (BUILDER) ===" \
+  && openssl version || echo "openssl nao encontrado"
+
 # ============================================================
 # INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
 # A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
 # ============================================================
-RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_29_TSFIX_R_IMPLICIT_ANY_NFT_MANUAL_CP_OK"
+RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_30_FIX_PRISMA_JSONNULL_REMOVED_BUILDER_OPENSSL3_INSTALLED_OK"
 
 COPY . .
 
@@ -39,15 +46,17 @@ RUN echo "=== [BUILDER v27] ARQUIVOS PAGE/ROUTE APOS COPY . . ===" \
   && du -sh /app/app 2>/dev/null || true
 
 # Prisma generate
-RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_27" \
+RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_30_OPENSSL_INSTALLED_NO_JSONNULL" \
+  && openssl version \
   && npx prisma generate \
   && find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true \
+  && echo "=== PRISMA ENGINE APOS GENERATE + LIMPEZA (BUILDER DEPLOY 30) ===" \
   && ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
 
 # Build Next.js standalone (ASSERT: .next/standalone/server.js DEVE existir no fim)
 ENV NEXT_BUILT=1
 RUN npm run build \
-  && echo "=== [BUILDER v28] ROTAS GERADAS NO .next/server/app ===" \
+  && echo "=== [BUILDER v30 DEPLOY 30] ROTAS GERADAS NO .next/server/app ===" \
   && (find /app/.next/server/app -maxdepth 6 -type f 2>/dev/null | sort | head -80 || true) \
   && echo "=== .next/standalone contents ===" \
   && ls -la /app/.next/standalone/ 2>/dev/null \

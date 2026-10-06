@@ -17,7 +17,7 @@ export type AuditInput = {
 
 function toJson(v: unknown | null | undefined): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined {
   if (v === undefined) return undefined;
-  if (v === null) return Prisma.JsonNull;
+  if (v === null) return null as unknown as Prisma.NullableJsonNullValueInput;
   try {
     if (typeof v === "object") return JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
     if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v as any;

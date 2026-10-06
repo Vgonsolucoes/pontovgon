@@ -40,7 +40,7 @@ export async function PATCH(req: NextRequest, segment: { params: Params }) {
       where: { id },
       data: {
         status: body.status,
-        result: body.result ?? Prisma.JsonNull,
+        result: (body.result ?? null) as unknown as Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue,
         error: body.error ?? null,
         finishedAt: now,
       },
