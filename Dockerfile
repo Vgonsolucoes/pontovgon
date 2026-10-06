@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v30_fix_prisma_jsonnull_removed_v5_builder_openssl3_installed
+ARG BUILDKIT_CACHE_BUST=20261006_v31_fix_runtime_nft_entrypoint_cp_api_agents_no_manifest
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -35,7 +35,7 @@ RUN apk add --no-cache openssl ca-certificates libc6-compat \
 # INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
 # A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
 # ============================================================
-RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_30_FIX_PRISMA_JSONNULL_REMOVED_BUILDER_OPENSSL3_INSTALLED_OK"
+RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_31_NFT_FIX_RUNTIME_ENTRYPOINT_API_AGENTS_COPY_OK"
 
 COPY . .
 
@@ -46,17 +46,17 @@ RUN echo "=== [BUILDER v27] ARQUIVOS PAGE/ROUTE APOS COPY . . ===" \
   && du -sh /app/app 2>/dev/null || true
 
 # Prisma generate
-RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_30_OPENSSL_INSTALLED_NO_JSONNULL" \
+RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_31_ENTRYPOINT_NFT_RUNTIME" \
   && openssl version \
   && npx prisma generate \
   && find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true \
-  && echo "=== PRISMA ENGINE APOS GENERATE + LIMPEZA (BUILDER DEPLOY 30) ===" \
+  && echo "=== PRISMA ENGINE APOS GENERATE + LIMPEZA (BUILDER DEPLOY 31) ===" \
   && ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
 
 # Build Next.js standalone (ASSERT: .next/standalone/server.js DEVE existir no fim)
 ENV NEXT_BUILT=1
 RUN npm run build \
-  && echo "=== [BUILDER v30 DEPLOY 30] ROTAS GERADAS NO .next/server/app ===" \
+  && echo "=== [BUILDER v31 DEPLOY 31 FIX RUNTIME NFT] ROTAS GERADAS NO .next/server/app ===" \
   && (find /app/.next/server/app -maxdepth 6 -type f 2>/dev/null | sort | head -80 || true) \
   && echo "=== .next/standalone contents ===" \
   && ls -la /app/.next/standalone/ 2>/dev/null \
@@ -103,6 +103,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/package-lock.json* ./
 COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh ./entrypoint.sh
+
+# === DEPLOY 31 NFT FIX RUNTIME: Copiar api/agents ORIGINAL (sem NFT apagou) para pasta temporaria RUNNER que entrypoint.sh ira cp runtime ===
+USER root
+RUN mkdir -p /tmp/nft-originals \
+  && echo "=== DEPLOY 31 NFT FIX: COPY api/agents e api/auth builder originais p/ /tmp/nft-originals ==="
+COPY --from=builder /app/.next/server/app/api/agents /tmp/nft-originals/api-agents
+RUN echo "=== /tmp/nft-originals/api-agents contents after COPY:" && find /tmp/nft-originals/api-agents -maxdepth 5 -type f 2>/dev/null | sort | head -20 || true
+RUN chown -R 1001:1001 /tmp/nft-originals
+USER nextjs
 
 # Remocao final openssl 1.1
 RUN find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true
