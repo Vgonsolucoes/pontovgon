@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v23_force_rebuild_agents
+ARG BUILDKIT_CACHE_BUST=20261006_v24_force_rebuild_full_copy_dot
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -24,6 +24,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV CACHE_BUST=${BUILDKIT_CACHE_BUST}
 ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
 COPY --from=deps /app/node_modules ./node_modules
+RUN echo "COPY_DOT_CACHE_BUST=${CACHE_BUST}" > /dev/null
 COPY . .
 
 # Prisma generate (forcar rebuild)
