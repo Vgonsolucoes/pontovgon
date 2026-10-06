@@ -25,11 +25,11 @@ export type AuditInput = {
   note?: string | null;
 };
 
-function toJson(v: unknown | null | undefined): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined {
+function toJson(v: unknown | null | undefined): any {
   if (v === undefined) return undefined;
-  if (v === null) return null as unknown as Prisma.NullableJsonNullValueInput;
+  if (v === null) return null as any;
   try {
-    if (typeof v === "object") return JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
+    if (typeof v === "object") return JSON.parse(JSON.stringify(v)) as any;
     if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v as any;
     return String(v);
   } catch {

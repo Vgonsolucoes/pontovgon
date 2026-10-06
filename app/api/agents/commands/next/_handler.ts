@@ -1,7 +1,6 @@
 import { authenticateAgentFromRequest } from "@/server/lib/agentAuth";
 import { prisma } from "@/server/db";
 import { NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
 
 export async function GET(req: Request) {
   const auth = await authenticateAgentFromRequest(req as any);
@@ -10,7 +9,7 @@ export async function GET(req: Request) {
   }
   try {
     const now = new Date();
-    const command = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const command = await prisma.$transaction(async (tx: any) => {
       const pending = await tx.commands.findFirst({
         where: { agentId: auth.agent.id, status: "PENDING" },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
