@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v26_all_22_pages_placeholders_0404_fixed
+ARG BUILDKIT_CACHE_BUST=20261006_v27_fix_standalone_not_found_literal_bust
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -12,7 +12,6 @@ ENV CACHE_BUST=${BUILDKIT_CACHE_BUST}
 RUN apk add --no-cache libc6-compat python3 make g++
 COPY package.json package-lock.json* ./
 RUN npm install --no-audit --no-fund
-# Remover engine openssl 1.1 gerado no postinstall @prisma/client (antes de schema.prisma ser copiado)
 RUN find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true
 RUN ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
 
@@ -24,25 +23,37 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV CACHE_BUST=${BUILDKIT_CACHE_BUST}
 ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
 COPY --from=deps /app/node_modules ./node_modules
-RUN echo "=== [BUILDER v25] COPY_DOT_CACHE_BUST=${CACHE_BUST} ==="
+
+# ============================================================
+# INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
+# A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
+# ============================================================
+RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_27_STANDALONE_ASSERT_OK"
+
 COPY . .
-RUN echo "=== [BUILDER v25] ARQUIVOS app/(dashboard)/integracoes APOS COPY . . ===" \
-  && find /app/app -maxdepth 4 -type f \( -name "page.tsx" -o -name "route.ts" \) | sort | grep -E "integracoes|api/agents" || echo "AVISO: nenhum arquivo encontrado!" \
-  && echo "=== /app size ===" \
+
+# DEBUG: listar arquivos page/route apos COPY
+RUN echo "=== [BUILDER v27] ARQUIVOS PAGE/ROUTE APOS COPY . . ===" \
+  && (find /app/app -maxdepth 5 -type f \( -name "page.tsx" -o -name "route.ts" \) 2>/dev/null | sort) \
+  && echo "=== /app/app du ===" \
   && du -sh /app/app 2>/dev/null || true
 
-# Prisma generate (forcar rebuild)
-RUN echo "CACHE_BUST=${CACHE_BUST}" \
+# Prisma generate
+RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_27" \
   && npx prisma generate \
   && find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true \
   && ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
 
-# Build Next.js standalone
+# Build Next.js standalone (ASSERT: .next/standalone/server.js DEVE existir no fim)
 ENV NEXT_BUILT=1
-RUN npm run build || npm run build \
-  && echo "=== [BUILDER v25] ROTAS GERADAS NO .next/server/app APOS BUILD ===" \
-  && find /app/.next/server/app -maxdepth 5 -type f | sort | grep -E "integracoes|api/agents|route" | head -40 || echo "AVISO: pasta .next/server/app nao encontrada?" \
-  && ls -la /app/.next/standalone/ 2>/dev/null || true
+RUN npm run build \
+  && echo "=== [BUILDER v27] ROTAS GERADAS NO .next/server/app ===" \
+  && (find /app/.next/server/app -maxdepth 6 -type f 2>/dev/null | sort | head -60 || true) \
+  && echo "=== .next/standalone contents ===" \
+  && ls -la /app/.next/standalone/ 2>/dev/null \
+  && echo "=== ASSERT .next/standalone/server.js EXISTE ===" \
+  && test -f /app/.next/standalone/server.js \
+  && echo "STANDALONE OK (server.js found)"
 
 # ---------- RUNNER ----------
 FROM node:${NODE_VERSION} AS runner
@@ -68,8 +79,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/package-lock.json* ./
 COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh ./entrypoint.sh
 
-# REMOÇÃO FINAL (sempre executa, sem cache) — engine openssl 1.1 incompatível Alpine 3.20 (libssl.so.1.1 não existe)
-# Deixa SOMENTE libquery_engine-linux-musl-openssl-3.0.x.so.node (libssl.so.3 via apk openssl package)
+# Remocao final openssl 1.1
 RUN find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true
 RUN ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
 
