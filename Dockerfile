@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v25_debug_copy_dot_and_next_build_routes
+ARG BUILDKIT_CACHE_BUST=20261006_v26_all_22_pages_placeholders_0404_fixed
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
