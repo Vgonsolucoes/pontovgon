@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v41_pages_router_agents_404_fix_definitive
+ARG BUILDKIT_CACHE_BUST=20261006_v42_runner_copy_builder_nft_always_exists_dir
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -35,7 +35,7 @@ RUN apk add --no-cache openssl ca-certificates libc6-compat \
 # INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
 # A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
 # ============================================================
-RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_41_PAGES_ROUTER_AGENTS"
+RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_42_BUILDER_NFT_DIR_ALWAYS_EXIST"
 
 COPY . .
 
@@ -46,7 +46,7 @@ RUN echo "=== [BUILDER v27] ARQUIVOS PAGE/ROUTE APOS COPY . . ===" \
   && du -sh /app/app 2>/dev/null || true
 
 # Prisma generate
-RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_41_LOGINFORM_USESEARCHPARAMS_NULL" \
+RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_42_RUNNER_NO_COPY_FAIL" \
   && openssl version \
   && npx prisma generate \
   && find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true \
@@ -67,6 +67,10 @@ RUN echo "=== DEPLOY 35 FINAL FIX NFT: cp api/agents e api/auth p/ standalone (b
   && (cp -R /app/.next/server/app/api/auth /app/.next/standalone/.next/server/app/api/ 2>/dev/null || true) \
   && (find /app/.next/standalone/.next/server/app/api -maxdepth 5 -type f -name "route.js" 2>/dev/null | sort | head -20 || true) \
   || true
+
+RUN mkdir -p /tmp/builder-nft \
+  && (if [ -d /app/.next/server/app/api/agents ]; then cp -R /app/.next/server/app/api/agents /tmp/builder-nft/api-agents; fi) \
+  && echo "builder /tmp/builder-nft:" && ls -la /tmp/builder-nft 2>/dev/null || true
 
 # ---------- RUNNER ----------
 FROM node:${NODE_VERSION} AS runner
@@ -92,12 +96,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/package-lock.json* ./
 COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh ./entrypoint.sh
 
-# === DEPLOY 31 NFT FIX RUNTIME: Copiar api/agents ORIGINAL (sem NFT apagou) para pasta temporaria RUNNER que entrypoint.sh ira cp runtime ===
+# === DEPLOY 42 NFT FIX RUNTIME: /tmp/builder-nft builder sempre existe (dir vazio se Pages Router) ===
 USER root
 RUN mkdir -p /tmp/nft-originals \
-  && echo "=== DEPLOY 31 NFT FIX: COPY api/agents e api/auth builder originais p/ /tmp/nft-originals ==="
-COPY --from=builder /app/.next/server/app/api/agents /tmp/nft-originals/api-agents
-RUN echo "=== /tmp/nft-originals/api-agents contents after COPY:" && find /tmp/nft-originals/api-agents -maxdepth 5 -type f 2>/dev/null | sort | head -20 || true
+  && echo "=== DEPLOY 42 NFT FIX: copia builder /tmp/builder-nft p/ runner /tmp/nft-originals ==="
+COPY --from=builder /tmp/builder-nft /tmp/nft-originals
+RUN echo "=== /tmp/nft-originals contents:" && find /tmp/nft-originals -maxdepth 5 -type f 2>/dev/null | sort | head -20 || true
 RUN chown -R 1001:1001 /tmp/nft-originals
 USER nextjs
 
