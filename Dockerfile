@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v34_simplificar_builder_run_build_3_comandos_sem_debug
+ARG BUILDKIT_CACHE_BUST=20261006_v35_cp_agents_standalone_builder_com_true_nao_quebrar_build
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -35,7 +35,7 @@ RUN apk add --no-cache openssl ca-certificates libc6-compat \
 # INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
 # A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
 # ============================================================
-RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_34_SIMPLIFICAR_BUILDER_RUN_BUILD_SEM_DEBUG"
+RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_35_FINAL_RUN_CP_AGENTS_STANDALONE_COM_TRUE"
 
 COPY . .
 
@@ -46,7 +46,7 @@ RUN echo "=== [BUILDER v27] ARQUIVOS PAGE/ROUTE APOS COPY . . ===" \
   && du -sh /app/app 2>/dev/null || true
 
 # Prisma generate
-RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_34_SIMPLIFICAR_RUN_BUILD" \
+RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_35_FINAL_RUN_CP_AGENTS_STANDALONE" \
   && openssl version \
   && npx prisma generate \
   && find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true \
@@ -56,6 +56,17 @@ ENV NEXT_BUILT=1
 RUN npm run build \
   && test -f /app/.next/standalone/server.js \
   && echo "BUILD OK: Next.js standalone gerado"
+
+RUN echo "=== DEPLOY 35 FINAL FIX NFT: cp api/agents e api/auth p/ standalone (builder) ===" \
+  && mkdir -p /app/.next/standalone/.next/server/app/api 2>/dev/null || true \
+  && (if [ -d /app/.next/server/app/api/agents ]; then \
+       rm -rf /app/.next/standalone/.next/server/app/api/agents 2>/dev/null || true; \
+       cp -R /app/.next/server/app/api/agents /app/.next/standalone/.next/server/app/api/ 2>/dev/null || true; \
+       echo "NFT FIX: api/agents COPIADO builder -> standalone"; \
+     fi) \
+  && (cp -R /app/.next/server/app/api/auth /app/.next/standalone/.next/server/app/api/ 2>/dev/null || true) \
+  && (find /app/.next/standalone/.next/server/app/api -maxdepth 5 -type f -name "route.js" 2>/dev/null | sort | head -20 || true) \
+  || true
 
 # ---------- RUNNER ----------
 FROM node:${NODE_VERSION} AS runner

@@ -99,7 +99,7 @@ export async function POST(req: Request) {
 
     const results = await Promise.allSettled(
       body.items.map(async (item, idx) => {
-        const data: Prisma.time_entriesCreateInput = {
+        const data = {
           externalEventId: item.externalEventId,
           date: new Date(item.date + "T00:00:00Z"),
           time: item.time.length === 5 ? item.time : item.time.slice(0, 5),
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
           originalEventRef: item.originalEventRef ?? item.externalEventId,
           note: item.note,
           device: { connect: { id: deviceRecord.id } },
-        };
+        } as any;
         if (item.employeeId) {
           data.employee = { connect: { id: item.employeeId } };
         }
