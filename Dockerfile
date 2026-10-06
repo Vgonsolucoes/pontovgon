@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v24_force_rebuild_full_copy_dot
+ARG BUILDKIT_CACHE_BUST=20261006_v25_debug_copy_dot_and_next_build_routes
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -24,8 +24,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV CACHE_BUST=${BUILDKIT_CACHE_BUST}
 ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
 COPY --from=deps /app/node_modules ./node_modules
-RUN echo "COPY_DOT_CACHE_BUST=${CACHE_BUST}" > /dev/null
+RUN echo "=== [BUILDER v25] COPY_DOT_CACHE_BUST=${CACHE_BUST} ==="
 COPY . .
+RUN echo "=== [BUILDER v25] ARQUIVOS app/(dashboard)/integracoes APOS COPY . . ===" \
+  && find /app/app -maxdepth 4 -type f \( -name "page.tsx" -o -name "route.ts" \) | sort | grep -E "integracoes|api/agents" || echo "AVISO: nenhum arquivo encontrado!" \
+  && echo "=== /app size ===" \
+  && du -sh /app/app 2>/dev/null || true
 
 # Prisma generate (forcar rebuild)
 RUN echo "CACHE_BUST=${CACHE_BUST}" \
@@ -35,7 +39,10 @@ RUN echo "CACHE_BUST=${CACHE_BUST}" \
 
 # Build Next.js standalone
 ENV NEXT_BUILT=1
-RUN npm run build || npm run build
+RUN npm run build || npm run build \
+  && echo "=== [BUILDER v25] ROTAS GERADAS NO .next/server/app APOS BUILD ===" \
+  && find /app/.next/server/app -maxdepth 5 -type f | sort | grep -E "integracoes|api/agents|route" | head -40 || echo "AVISO: pasta .next/server/app nao encontrada?" \
+  && ls -la /app/.next/standalone/ 2>/dev/null || true
 
 # ---------- RUNNER ----------
 FROM node:${NODE_VERSION} AS runner
