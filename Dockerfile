@@ -33,7 +33,7 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
-RUN apk add --no-cache ca-certificates openssl tini libc6-compat
+RUN apk add --no-cache ca-certificates openssl tini libc6-compat openssl1.1-compat
 
 RUN addgroup -S -g 1001 nodejs \
   && adduser -S -u 1001 -G nodejs nextjs
