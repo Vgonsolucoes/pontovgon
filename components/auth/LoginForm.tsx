@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 function LoginInnerForm() {
   const router = useRouter();
   const search = useSearchParams();
-  const callbackUrl = search.get("callbackUrl") || "/dashboard";
+  const callbackUrl = search?.get("callbackUrl") || "/dashboard";
   const [email, setEmail] = useState("master@vgon.com.br");
   const [password, setPassword] = useState("Mudar@123");
   const [loading, setLoading] = useState(false);

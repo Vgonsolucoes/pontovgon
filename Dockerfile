@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v40_db_proxy_lazy_prisma_client
+ARG BUILDKIT_CACHE_BUST=20261006_v41_pages_router_agents_404_fix_definitive
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -35,7 +35,7 @@ RUN apk add --no-cache openssl ca-certificates libc6-compat \
 # INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
 # A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
 # ============================================================
-RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_40_PRISMA_LAZY_PROXY"
+RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_41_PAGES_ROUTER_AGENTS"
 
 COPY . .
 
@@ -46,7 +46,7 @@ RUN echo "=== [BUILDER v27] ARQUIVOS PAGE/ROUTE APOS COPY . . ===" \
   && du -sh /app/app 2>/dev/null || true
 
 # Prisma generate
-RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_40_NO_BUILD_COLLECT_PRISMA" \
+RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_41_LOGINFORM_USESEARCHPARAMS_NULL" \
   && openssl version \
   && npx prisma generate \
   && find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true \
