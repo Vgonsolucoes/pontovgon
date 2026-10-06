@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
-import type { agents } from "@prisma/client";
 
-export type AuthenticatedAgent = agents;
+export type AuthenticatedAgent = NonNullable<Awaited<ReturnType<typeof prisma.agents.findFirst>>>;
 
 export async function authenticateAgentFromRequest(
   req: NextRequest,

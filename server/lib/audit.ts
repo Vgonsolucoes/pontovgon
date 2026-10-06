@@ -1,7 +1,17 @@
 import { prisma } from "@/server/db";
 import { Prisma } from "@prisma/client";
-import type { AuditAction } from "@prisma/client";
 import type { Session } from "next-auth";
+
+export type AuditAction =
+  | "CREATE"
+  | "UPDATE"
+  | "SOFT_DELETE"
+  | "RESTORE"
+  | "APPROVE"
+  | "REJECT"
+  | "ADJUST"
+  | "MANUAL_ENTRY"
+  | "SYNC";
 
 export type AuditInput = {
   session?: { user?: { id?: string; email?: string } } | Session | null;
