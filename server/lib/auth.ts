@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import type { UserRole } from "@prisma/client";
 import type { Session } from "next-auth";
+
+export type UserRole = "MASTER" | "ADMIN" | "RH" | "GESTOR" | "FUNCIONARIO";
 
 export async function getSessionOrLogin(): Promise<NonNullable<Session>> {
   const session = await auth();

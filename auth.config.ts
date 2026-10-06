@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
-import type { UserRole } from "@prisma/client";
+
+type UserRole = "MASTER" | "ADMIN" | "RH" | "GESTOR" | "FUNCIONARIO";
 
 declare module "next-auth" {
   interface Session {

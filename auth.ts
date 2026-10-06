@@ -4,8 +4,8 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/server/db";
 import { authConfig } from "./auth.config";
-import type { UserRole } from "@prisma/client";
 
+export type UserRole = "MASTER" | "ADMIN" | "RH" | "GESTOR" | "FUNCIONARIO";
 type ExtendedUser = User & { role?: UserRole | null; employeeId?: string | null };
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
