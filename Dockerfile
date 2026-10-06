@@ -18,7 +18,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Prisma generate
-RUN npx prisma generate
+RUN npx prisma generate && ls -la node_modules/.prisma/client/ 2>/dev/null || true
 
 # Build Next.js standalone
 ENV NEXT_BUILT=1
@@ -31,7 +31,8 @@ WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
 
 RUN apk add --no-cache ca-certificates openssl tini libc6-compat
 
