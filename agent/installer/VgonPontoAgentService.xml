@@ -1,0 +1,19 @@
+<service>
+  <id>VgonPontoAgent</id>
+  <name>VGON PONTO Agent</name>
+  <description>Agente local VGON PONTO (MODELO B): integra o Control iD iDFace (LAN) a API VGON PONTO via HTTPS, com fila offline SQLite e retry com backoff.</description>
+  <executable>%BASE%\..\runtime\node.exe</executable>
+  <arguments>"%BASE%\..\app\dist\index.js"</arguments>
+  <workingdirectory>%BASE%\..\app</workingdirectory>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <onfailure action="restart" delay="10 sec"/>
+  <stoptimeout>15 sec</stoptimeout>
+  <logpath>C:\ProgramData\VGON\Ponto Agent\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+  <env name="VGON_AGENT_CONFIG" value="C:\ProgramData\VGON\Ponto Agent\agent.config.json"/>
+  <env name="NODE_ENV" value="production"/>
+</service>

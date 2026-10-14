@@ -16,6 +16,8 @@ import {
 } from "./db/sqlite";
 import { ControlIdService, IDFaceTimeEvent, AgentCommand, CommandResult } from "./services/ControlIdService";
 import { VgonPontoApiClient } from "./services/VgonPontoApiClient";
+import { startUiServer } from "./ui/server";
+import type { Server as HttpServer } from "node:http";
 
 const LOGO = String.raw`
   ___  _____  ___  _  _    ___   ___  _____  _____  ___  
@@ -48,6 +50,7 @@ class AgentRuntime {
   cmdTimer: ReturnType<typeof setInterval> | null = null;
   cmdQueue: AgentCommand[] = [];
   bootAt = new Date();
+  uiServer: HttpServer | null = null;
 
   constructor(cfg: AgentConfig) {
     this.cfg = cfg;
@@ -103,7 +106,38 @@ class AgentRuntime {
     void tickCmd();
     this.cmdTimer = setInterval(tickCmd, this.cfg.pollCommandsIntervalSec * 1000);
 
+    // Tela local "VGON PONTO Agent — Configurações" (http://127.0.0.1:3737)
+    try {
+      this.uiServer = startUiServer({
+        mode: "embedded",
+        getRuntimeStatus: () => this.buildRuntimeStatus(),
+        syncNow: async () => {
+          await this.syncTick();
+          return "Sincronização executada";
+        },
+      });
+    } catch (e) {
+      this.log.warn({ err: e instanceof Error ? e.message : String(e) }, "UI local não iniciada");
+    }
+
     this.log.info("Agent em execução — Ctrl+C para parar");
+  }
+
+  buildRuntimeStatus() {
+    const db = getDb(this.cfg.dbPath);
+    const pending = (db.prepare("SELECT COUNT(*) AS c FROM pending_events").get() as { c: number }).c;
+    const sentToday = (db
+      .prepare("SELECT COUNT(*) AS c FROM sent_events WHERE sent_at >= strftime('%Y-%m-%dT00:00:00.000Z','now')")
+      .get() as { c: number }).c;
+    return {
+      pendingEvents: pending,
+      sentToday,
+      lastCaptureIso: getKv(db, "events_last_iso"),
+      mock: this.cfg.mock,
+      uptimeSec: Math.floor(process.uptime()),
+      startedAt: this.bootAt.toISOString(),
+      syncIntervalSec: this.cfg.syncIntervalSec,
+    };
   }
 
   shutdown() {
@@ -111,6 +145,10 @@ class AgentRuntime {
     if (this.loopTimer) clearInterval(this.loopTimer);
     if (this.hbTimer) clearInterval(this.hbTimer);
     if (this.cmdTimer) clearInterval(this.cmdTimer);
+    if (this.uiServer) {
+      this.uiServer.close();
+      this.uiServer = null;
+    }
     closeDb();
     this.log.info("Agent parado.");
   }
