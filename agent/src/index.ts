@@ -10,7 +10,7 @@ import {
   takePendingBatch,
   markPendingAttempt,
   movePendingToSent,
-  deleteFailed,
+  countStuckEvents,
   closeDb,
   PendingEvent,
 } from "./db/sqlite";
@@ -166,7 +166,7 @@ class AgentRuntime {
 
     const pending = takePendingBatch(db, 500);
     if (pending.length === 0) {
-      deleteFailed(db, 25);
+      countStuckEvents(db);
       return;
     }
     const items = pending
@@ -181,13 +181,16 @@ class AgentRuntime {
     if (items.length === 0) return;
 
     const startedAt = new Date().toISOString();
+    // syncId determinístico: derivado do conteúdo do lote (primeiro+último externalEventId).
+    // Reenvio do mesmo lote gera o mesmo syncId — rastreável e sem Math.random/Date.now.
+    const syncId = `sync-${items[0].externalEventId}-${items[items.length - 1].externalEventId}`.slice(0, 80);
     try {
       const resp = await this.api.sendTimeEntriesBatch({
         events: items,
         deviceUniqueId: this.cfg.idface.deviceId,
         deviceSerialNumber: this.cfg.idface.deviceSerialNumber,
         startedAt,
-        syncId: `sync-${Date.now()}`,
+        syncId,
       });
       this.log.info(
         { received: resp.received, created: resp.created, duplicated: resp.duplicated, failed: resp.failed, syncLogId: resp.syncLogId },
@@ -216,9 +219,9 @@ class AgentRuntime {
       movePendingToSent(db, okPending, processedOk, resp);
     } catch (e) {
       for (const p of pending) markPendingAttempt(db, p.id, e instanceof Error ? e.message : String(e));
-      this.log.error({ err: e instanceof Error ? e.message : String(e), n: pending.length }, "Envio lote falhou — mantido em fila para retry");
+      this.log.error({ err: e instanceof Error ? e.message : String(e), n: pending.length }, "Envio lote falhou — mantido em fila para retry com backoff");
     }
-    deleteFailed(db, 25);
+    countStuckEvents(db);
   }
 
   async commandsTick() {
