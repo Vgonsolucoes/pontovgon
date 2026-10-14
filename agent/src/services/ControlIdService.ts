@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from "axios";
 import type { AgentConfig, IDFaceConfig } from "../config";
 import { pino } from "pino";
 import { getDb, getKv, setKv } from "../db/sqlite";
+import { spParts } from "./timezone";
 
 export interface IDFaceTimeEvent {
   externalEventId: string;
@@ -74,8 +75,6 @@ const MAX_PAGES_PER_TICK = 20;
 // Chave do cursor incremental (id do último access_log importado) no kv_store.
 const KV_LAST_LOG_ID = "idface_last_log_id";
 
-const SP_TZ = "America/Sao_Paulo";
-
 interface AccessLogRow {
   id: number | string;
   time: number; // unix timestamp (segundos)
@@ -87,43 +86,6 @@ interface AccessLogRow {
   identification_rule_id?: number | string;
   card_value?: number | string;
   log_type_id?: number | string;
-}
-
-interface SpParts {
-  date: string; // YYYY-MM-DD
-  time: string; // HH:mm
-  day: number;
-  month: number;
-  year: number;
-  hour: number;
-  minute: number;
-  second: number;
-}
-
-/** Componentes de data/hora no fuso America/Sao_Paulo (horário local do equipamento). */
-function spParts(d: Date): SpParts {
-  const fmt = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: SP_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-  const map: Record<string, string> = {};
-  for (const p of fmt.formatToParts(d)) map[p.type] = p.value;
-  return {
-    date: `${map.year}-${map.month}-${map.day}`,
-    time: `${map.hour}:${map.minute}`,
-    day: Number(map.day),
-    month: Number(map.month),
-    year: Number(map.year),
-    hour: Number(map.hour === "24" ? "0" : map.hour),
-    minute: Number(map.minute),
-    second: Number(map.second),
-  };
 }
 
 export class ControlIdService {
