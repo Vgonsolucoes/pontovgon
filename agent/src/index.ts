@@ -153,6 +153,8 @@ class AgentRuntime {
 
     for (const e of events) queuePendingEvent(db, e);
     if (events.length) {
+      // Cursor por id só avança DEPOIS do enfileiramento (durabilidade).
+      this.ctrl.commitEventsCursor(events);
       const latest = events
         .map((x) => x.timestamp)
         .filter(Boolean)
