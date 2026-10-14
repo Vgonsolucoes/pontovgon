@@ -18,7 +18,7 @@ async function hash(pw: string) {
 async function main() {
   const email = process.env.SEED_MASTER_EMAIL?.trim() || "master@vgon.com.br";
   const name = process.env.SEED_MASTER_NAME?.trim() || "Master Vgon";
-  const password = process.env.SEED_MASTER_PASSWORD?.trim() || "Mudar@123";
+  const password = process.env.SEED_MASTER_PASSWORD?.trim() || "Admin@123";
   const passwordHash = await hash(password);
 
   const user = await prisma.users.upsert({
@@ -30,7 +30,9 @@ async function main() {
       role: UserRole.MASTER,
       active: true,
     },
-    update: { name, passwordHash, role: UserRole.MASTER, active: true, deletedAt: null },
+    // NAO sobrescreve passwordHash em boots subsequentes: a senha definida
+    // manualmente deve sobreviver a restarts/redeploys do container.
+    update: { name, role: UserRole.MASTER, active: true, deletedAt: null },
   });
 
   // Setores padrão
@@ -119,7 +121,7 @@ async function main() {
     // ignore if already set
   }
 
-  console.log(`Seed MASTER pronto: ${user.email} · ${password}`);
+  console.log(`Seed MASTER pronto: ${user.email} (senha preservada em boots subsequentes)`);
   console.log(`Device iDFace: uniqueId=${device.deviceUniqueId} · serial=${device.serialNumber} · fw=${device.firmwareVersion} · mac=${device.macAddress}`);
   console.log(`Agent Local (Bearer token): ${agent.token}`);
   console.log(`    > nome: ${agent.name}  |  syncInterval: ${agent.syncIntervalSec}s  |  vinculado ao device: ${device.deviceUniqueId}`);
