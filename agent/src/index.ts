@@ -10,12 +10,14 @@ import {
   takePendingBatch,
   markPendingAttempt,
   movePendingToSent,
-  deleteFailed,
+  countStuckEvents,
   closeDb,
   PendingEvent,
 } from "./db/sqlite";
 import { ControlIdService, IDFaceTimeEvent, AgentCommand, CommandResult } from "./services/ControlIdService";
 import { VgonPontoApiClient } from "./services/VgonPontoApiClient";
+import { startUiServer } from "./ui/server";
+import type { Server as HttpServer } from "node:http";
 
 const LOGO = String.raw`
   ___  _____  ___  _  _    ___   ___  _____  _____  ___  
@@ -48,6 +50,7 @@ class AgentRuntime {
   cmdTimer: ReturnType<typeof setInterval> | null = null;
   cmdQueue: AgentCommand[] = [];
   bootAt = new Date();
+  uiServer: HttpServer | null = null;
 
   constructor(cfg: AgentConfig) {
     this.cfg = cfg;
@@ -103,7 +106,38 @@ class AgentRuntime {
     void tickCmd();
     this.cmdTimer = setInterval(tickCmd, this.cfg.pollCommandsIntervalSec * 1000);
 
+    // Tela local "VGON PONTO Agent — Configurações" (http://127.0.0.1:3737)
+    try {
+      this.uiServer = startUiServer({
+        mode: "embedded",
+        getRuntimeStatus: () => this.buildRuntimeStatus(),
+        syncNow: async () => {
+          await this.syncTick();
+          return "Sincronização executada";
+        },
+      });
+    } catch (e) {
+      this.log.warn({ err: e instanceof Error ? e.message : String(e) }, "UI local não iniciada");
+    }
+
     this.log.info("Agent em execução — Ctrl+C para parar");
+  }
+
+  buildRuntimeStatus() {
+    const db = getDb(this.cfg.dbPath);
+    const pending = (db.prepare("SELECT COUNT(*) AS c FROM pending_events").get() as { c: number }).c;
+    const sentToday = (db
+      .prepare("SELECT COUNT(*) AS c FROM sent_events WHERE sent_at >= strftime('%Y-%m-%dT00:00:00.000Z','now')")
+      .get() as { c: number }).c;
+    return {
+      pendingEvents: pending,
+      sentToday,
+      lastCaptureIso: getKv(db, "events_last_iso"),
+      mock: this.cfg.mock,
+      uptimeSec: Math.floor(process.uptime()),
+      startedAt: this.bootAt.toISOString(),
+      syncIntervalSec: this.cfg.syncIntervalSec,
+    };
   }
 
   shutdown() {
@@ -111,6 +145,10 @@ class AgentRuntime {
     if (this.loopTimer) clearInterval(this.loopTimer);
     if (this.hbTimer) clearInterval(this.hbTimer);
     if (this.cmdTimer) clearInterval(this.cmdTimer);
+    if (this.uiServer) {
+      this.uiServer.close();
+      this.uiServer = null;
+    }
     closeDb();
     this.log.info("Agent parado.");
   }
@@ -153,6 +191,8 @@ class AgentRuntime {
 
     for (const e of events) queuePendingEvent(db, e);
     if (events.length) {
+      // Cursor por id só avança DEPOIS do enfileiramento (durabilidade).
+      this.ctrl.commitEventsCursor(events);
       const latest = events
         .map((x) => x.timestamp)
         .filter(Boolean)
@@ -164,7 +204,7 @@ class AgentRuntime {
 
     const pending = takePendingBatch(db, 500);
     if (pending.length === 0) {
-      deleteFailed(db, 25);
+      countStuckEvents(db);
       return;
     }
     const items = pending
@@ -179,13 +219,16 @@ class AgentRuntime {
     if (items.length === 0) return;
 
     const startedAt = new Date().toISOString();
+    // syncId determinístico: derivado do conteúdo do lote (primeiro+último externalEventId).
+    // Reenvio do mesmo lote gera o mesmo syncId — rastreável e sem Math.random/Date.now.
+    const syncId = `sync-${items[0].externalEventId}-${items[items.length - 1].externalEventId}`.slice(0, 80);
     try {
       const resp = await this.api.sendTimeEntriesBatch({
         events: items,
         deviceUniqueId: this.cfg.idface.deviceId,
         deviceSerialNumber: this.cfg.idface.deviceSerialNumber,
         startedAt,
-        syncId: `sync-${Date.now()}`,
+        syncId,
       });
       this.log.info(
         { received: resp.received, created: resp.created, duplicated: resp.duplicated, failed: resp.failed, syncLogId: resp.syncLogId },
@@ -214,9 +257,9 @@ class AgentRuntime {
       movePendingToSent(db, okPending, processedOk, resp);
     } catch (e) {
       for (const p of pending) markPendingAttempt(db, p.id, e instanceof Error ? e.message : String(e));
-      this.log.error({ err: e instanceof Error ? e.message : String(e), n: pending.length }, "Envio lote falhou — mantido em fila para retry");
+      this.log.error({ err: e instanceof Error ? e.message : String(e), n: pending.length }, "Envio lote falhou — mantido em fila para retry com backoff");
     }
-    deleteFailed(db, 25);
+    countStuckEvents(db);
   }
 
   async commandsTick() {

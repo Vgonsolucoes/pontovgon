@@ -1,0 +1,19 @@
+{
+  "apiUrl": "https://vgonponto-web.54myeq.easypanel.host",
+  "agentToken": "CONFIGURAR_PELA_TELA_UI",
+  "syncIntervalSec": 30,
+  "pollCommandsIntervalSec": 15,
+  "heartbeatIntervalSec": 60,
+  "mock": false,
+  "dbPath": "C:\\ProgramData\\VGON\\Ponto Agent\\data\\agent.db",
+  "logLevel": "info",
+  "idface": {
+    "url": "http://192.168.1.150",
+    "port": 80,
+    "user": "admin",
+    "password": "admin",
+    "deviceId": "4408801109279099",
+    "readEventsBatchSize": 500,
+    "readEventsFromMinutesAgo": 1440
+  }
+}

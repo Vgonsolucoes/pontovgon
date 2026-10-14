@@ -1,5 +1,7 @@
 import { requireRole } from "@/server/lib/auth";
 import { prisma } from "@/server/db";
+import fs from "node:fs";
+import path from "node:path";
 import {
   Alert,
   AlertDescription,
@@ -29,20 +31,22 @@ import {
   ShieldAlert,
   ShieldCheck,
   MonitorDot,
-  Cpu,
   HardDriveDownload,
   Network,
   TerminalSquare,
   Fingerprint,
-  Clock3,
   ExternalLink,
   Server as ServerIcon,
-  Copy as CopyIcon,
+  PackageOpen,
+  FileWarning,
+  Users,
+  RefreshCcw,
 } from "lucide-react";
 import { Suspense } from "react";
+import { CopyCode, CopyTokenButton } from "@/components/integrations/copy-code";
+import { AgentActions } from "@/components/integrations/agent-actions";
 
 const GITHUB_BASE = "https://github.com/Vgonsolucoes/pontovgon";
-const RELEASE_TAG = "agent-v1.0.0";
 
 export const metadata = {
   title: "Integrações · VGON PONTO Agent",
@@ -61,6 +65,8 @@ type AgentRow = {
   syncIntervalSec: number;
   enabled: boolean;
   pendingCount: number;
+  sentToday: number;
+  failedToday: number;
   _count: {
     heartbeats: number;
     commands: number;
@@ -69,26 +75,109 @@ type AgentRow = {
   };
 };
 
-async function loadAgents(): Promise<AgentRow[]> {
-  const rows = await prisma.agents.findMany({
-    where: { deletedAt: null },
-    include: {
-      _count: {
-        select: {
-          heartbeats: true,
-          commands: true,
-          sync_logs: true,
-          devices: true,
+type LoadAgentsResult =
+  | { ok: true; rows: AgentRow[] }
+  | { ok: false; message: string };
+
+/** Início do dia corrente em America/Sao_Paulo (UTC-3 fixo, sem horário de verão desde 2019). */
+function startOfDaySaoPaulo(): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  return new Date(`${get("year")}-${get("month")}-${get("day")}T00:00:00-03:00`);
+}
+
+// Nunca deixa uma falha de consulta derrubar a pagina inteira:
+// retorna estado de erro para exibicao amigavel e registra detalhes no log do servidor.
+async function loadAgents(): Promise<LoadAgentsResult> {
+  try {
+    const dayStart = startOfDaySaoPaulo();
+    const [rows, syncAgg] = await Promise.all([
+      prisma.agents.findMany({
+        where: { deletedAt: null },
+        include: {
+          _count: {
+            select: {
+              heartbeats: true,
+              commands: true,
+              sync_logs: true,
+              devices: true,
+            },
+          },
+          heartbeats: { take: 1, orderBy: { sentAt: "desc" }, select: { pendingEvents: true } },
         },
-      },
-      heartbeats: { take: 1, orderBy: { sentAt: "desc" }, select: { pendingEvents: true } },
-    },
-    orderBy: [{ enabled: "desc" }, { createdAt: "desc" }],
-  });
-  return rows.map((r: any) => ({
-    ...r,
-    pendingCount: r.heartbeats[0]?.pendingEvents ?? 0,
-  })) as AgentRow[];
+        orderBy: [{ enabled: "desc" }, { createdAt: "desc" }],
+      }),
+      prisma.device_sync_logs.groupBy({
+        by: ["agentId"],
+        where: { startedAt: { gte: dayStart } },
+        _sum: { newEvents: true, failed: true },
+      }),
+    ]);
+    const aggByAgent = new Map(
+      syncAgg
+        .filter((a) => a.agentId)
+        .map((a) => [
+          a.agentId as string,
+          { sent: a._sum.newEvents ?? 0, failed: a._sum.failed ?? 0 },
+        ]),
+    );
+    const mapped = rows.map((r: any) => ({
+      ...r,
+      pendingCount: r.heartbeats[0]?.pendingEvents ?? 0,
+      sentToday: aggByAgent.get(r.id)?.sent ?? 0,
+      failedToday: aggByAgent.get(r.id)?.failed ?? 0,
+    })) as AgentRow[];
+    return { ok: true, rows: mapped };
+  } catch (err) {
+    console.error("[integracoes/agents] falha ao consultar agents:", err);
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : "Erro desconhecido ao consultar o banco de dados.",
+    };
+  }
+}
+
+type AgentManifest = {
+  version: string;
+  fileName: string;
+  sha256: string;
+  sizeBytes: number;
+  arch: string;
+  builtAt: string;
+};
+
+/**
+ * Lê o manifest gerado pelo build do instalador (agent/installer/build-installer.ps1
+ * copia para public/downloads/). Ausência do arquivo = instalador ainda não publicado
+ * (estado vazio honesto, sem links quebrados).
+ */
+function loadAgentManifest(): AgentManifest | null {
+  try {
+    const p = path.join(process.cwd(), "public", "downloads", "agent-manifest.json");
+    if (!fs.existsSync(p)) return null;
+    const raw = JSON.parse(fs.readFileSync(p, "utf-8")) as Partial<AgentManifest>;
+    if (!raw.fileName || !raw.version || !raw.sha256) return null;
+    const exeExists = fs.existsSync(
+      path.join(process.cwd(), "public", "downloads", raw.fileName),
+    );
+    if (!exeExists) return null;
+    return {
+      version: String(raw.version),
+      fileName: String(raw.fileName),
+      sha256: String(raw.sha256),
+      sizeBytes: Number(raw.sizeBytes ?? 0),
+      arch: String(raw.arch ?? "windows-x64"),
+      builtAt: String(raw.builtAt ?? ""),
+    };
+  } catch (err) {
+    console.error("[integracoes/agents] falha ao ler agent-manifest.json:", err);
+    return null;
+  }
 }
 
 function fmtDate(d: Date | null): string {
@@ -107,73 +196,30 @@ function StatusBadge({ s }: { s: string }) {
   return <Badge variant={(variants[s] ?? "outline") as any}>{s}</Badge>;
 }
 
-function CopyCode({ code }: { code: string }) {
-  return (
-    <div className="relative group">
-      <pre className="bg-slate-950 text-slate-100 rounded-lg p-4 text-xs sm:text-sm overflow-x-auto whitespace-pre-wrap break-words border border-slate-800">
-        <code>{code}</code>
-      </pre>
-      <button
-        type="button"
-        onClick={() => navigator?.clipboard?.writeText(code).catch(() => {})}
-        className="hidden sm:flex absolute right-2 top-2 items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700"
-      >
-        <CopyIcon className="w-3 h-3" /> Copiar
-      </button>
-    </div>
-  );
-}
-
-function AgentTokenSeed() {
-  const LABEL = "agent_local_001";
-  const pad = "VgOnSeGuRo2o26!";
-  const LABEL_CLEAN = LABEL.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 12);
-  const TOKEN = (LABEL_CLEAN + "_" + pad).padEnd(48, pad).slice(0, 48);
-  const JSON_EXAMPLE = `{
+function buildConfigExample(token: string | null): string {
+  return `{
   "apiUrl": "https://vgonponto-web.54myeq.easypanel.host",
-  "agentToken": "${TOKEN}",
+  "agentToken": "${token ?? "COLE_O_AGENT_TOKEN_DA_TABELA_ABAIXO"}",
   "syncIntervalSec": 30,
-  "pollCommandsIntervalSec": 30,
-  "heartbeatIntervalSec": 30,
+  "pollCommandsIntervalSec": 15,
+  "heartbeatIntervalSec": 60,
   "mock": false,
-  "dbPath": "./data/agent.db",
   "logLevel": "info",
   "idface": {
     "url": "http://192.168.1.150",
     "port": 80,
     "user": "admin",
     "password": "admin",
-    "deviceId": "4408801109279099",
-    "deviceSerialNumber": "0M0200/01017B",
-    "deviceFirmware": "6.18.6",
-    "deviceMac": "FC:52:CE:8A:B9:91",
-    "readEventsBatchSize": 500,
-    "readEventsFromMinutesAgo": 1440
+    "deviceId": "4408801109279099"
   }
 }`;
-  const JSON_MOCK = `{
-  "apiUrl": "https://vgonponto-web.54myeq.easypanel.host",
-  "agentToken": "${TOKEN}",
-  "mock": true,
-  "syncIntervalSec": 10,
-  "dbPath": "./data/agent.db",
-  "logLevel": "debug",
-  "idface": {
-    "url": "http://127.0.0.1",
-    "port": 80,
-    "user": "admin",
-    "password": "admin",
-    "deviceId": "4408801109279099",
-    "deviceSerialNumber": "0M0200/01017B"
-  }
-}`;
-  return { JSON_EXAMPLE, JSON_MOCK, TOKEN };
 }
 
 export default async function IntegracoesAgentPage() {
-  const session = await requireRole(["MASTER", "ADMIN"]);
-  const AGENT = AgentTokenSeed();
-  const agents = await loadAgents();
+  await requireRole(["MASTER", "ADMIN"]);
+  const result = await loadAgents();
+  const manifest = loadAgentManifest();
+  const firstToken = result.ok ? result.rows[0]?.token ?? null : null;
 
   return (
     <div className="space-y-6 p-4 sm:p-8 max-w-[1400px] mx-auto">
@@ -207,94 +253,96 @@ export default async function IntegracoesAgentPage() {
           ⚠️ Nunca exponha a porta do iDFace à internet
         </AlertTitle>
         <AlertDescription className="text-amber-800 dark:text-amber-300">
-          O MODELO B é <strong>obrigatório</strong>. Instale o agent em um PC/mini-pc/Raspberry Pi que consiga alcançar o iDFace pela LAN.
-          Credenciais do iDFace ficam apenas no <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-[0.8em]">agent.config.json</code> local —
+          O MODELO B é <strong>obrigatório</strong>. Instale o agent em um PC/mini-pc que consiga alcançar o iDFace pela LAN.
+          Credenciais do iDFace ficam apenas na máquina local (<code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-[0.8em]">C:\ProgramData\VGON\Ponto Agent</code>) —
           nunca saem da sua rede.
         </AlertDescription>
       </Alert>
 
-      <section className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
-        <Card>
+      <section className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        <Card className={manifest ? "border-emerald-300 dark:border-emerald-800" : ""}>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
-              <MonitorDot className="w-5 h-5 text-sky-600" /> Windows x64 (Portable ZIP)
+              <MonitorDot className="w-5 h-5 text-sky-700" /> Windows x64 Setup (instalador oficial)
             </CardTitle>
-            <CardDescription>Descompacte e execute com `npm start`. Ideal para testes.</CardDescription>
+            <CardDescription>
+              Instala o serviço <strong>VgonPontoAgent</strong> com runtime embutido — sem precisar instalar Node.js.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Link
-              href={`${GITHUB_BASE}/releases/download/${RELEASE_TAG}/vgon-ponto-agent-v1.0.0-win-x64.zip`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Button className="w-full">
-                <HardDriveDownload className="w-4 h-4 mr-2" /> Download .zip (~45 MB)
-              </Button>
-            </Link>
-            <p className="text-xs text-slate-500">Requer Node.js ≥ 18 · Windows 10/11 ou Server 2019+</p>
+            {manifest ? (
+              <>
+                <Link href={`/downloads/${manifest.fileName}`} target="_blank" rel="noopener noreferrer">
+                  <Button className="w-full">
+                    <Download className="w-4 h-4 mr-2" /> Baixar {manifest.fileName}
+                    {manifest.sizeBytes > 0 && (
+                      <span className="ml-1 opacity-80">
+                        (~{(manifest.sizeBytes / 1024 / 1024).toFixed(0)} MB)
+                      </span>
+                    )}
+                  </Button>
+                </Link>
+                <dl className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                  {[
+                    ["Versão", `v${manifest.version}`],
+                    ["Arquitetura", manifest.arch],
+                    [
+                      "Publicado em",
+                      manifest.builtAt
+                        ? new Date(manifest.builtAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
+                        : "—",
+                    ],
+                  ].map(([k, v]) => (
+                    <div key={k} className="flex justify-between py-1.5">
+                      <dt className="text-slate-500 dark:text-slate-400">{k}</dt>
+                      <dd className="font-mono text-slate-900 dark:text-slate-100 text-[0.78rem]">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">
+                    SHA-256 (verifique após o download com{" "}
+                    <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">certutil -hashfile arquivo SHA256</code>):
+                  </p>
+                  <CopyCode code={manifest.sha256} />
+                </div>
+              </>
+            ) : (
+              <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-5 text-center space-y-2">
+                <FileWarning className="w-6 h-6 mx-auto text-slate-400" />
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Instalador ainda não publicado
+                </p>
+                <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
+                  Gere o instalador em uma máquina Windows com Node.js 20+ e Inno Setup 6:
+                  <CopyCode code={`cd agent\nnpm ci\nnpm run installer`} />
+                  O script gera o Setup + SHA-256 e copia o manifest para{" "}
+                  <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">public/downloads/</code> —
+                  faça o deploy e este botão aparecerá automaticamente.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
-              <MonitorDot className="w-5 h-5 text-sky-700" /> Windows x64 Setup (Instalador)
+              <PackageOpen className="w-5 h-5 text-indigo-600" /> Releases e código-fonte
             </CardTitle>
-            <CardDescription>Instala como Windows Service automaticamente.</CardDescription>
+            <CardDescription>Changelog, checksums e releases históricas no GitHub.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Link
-              href={`${GITHUB_BASE}/releases/download/${RELEASE_TAG}/vgon-ponto-agent-v1.0.0-win-x64.exe`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <Link href={`${GITHUB_BASE}/releases`} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" className="w-full">
-                <Download className="w-4 h-4 mr-2" /> Baixar Setup.exe (breve)
+                <ExternalLink className="w-4 h-4 mr-2" /> Abrir GitHub Releases
               </Button>
             </Link>
-            <p className="text-xs text-slate-500">Use o .zip por enquanto. Instalador oficial em release futura.</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Cpu className="w-5 h-5 text-emerald-600" /> Linux x64 (tar.gz)
-            </CardTitle>
-            <CardDescription>Ubuntu / Debian / RHEL — systemd.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Link
-              href={`${GITHUB_BASE}/releases/download/${RELEASE_TAG}/vgon-ponto-agent-v1.0.0-linux-x64.tar.gz`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Button variant="outline" className="w-full">
-                <HardDriveDownload className="w-4 h-4 mr-2" /> Baixar .tar.gz
-              </Button>
-            </Link>
-            <p className="text-xs text-slate-500">Use `tar -xzf` + `npm start` como serviço systemd.</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <ServerIcon className="w-5 h-5 text-rose-600" /> Raspberry Pi (ARM64)
-            </CardTitle>
-            <CardDescription>Debian .pkg para Pi 3B+ / 4 / 5.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Link
-              href={`${GITHUB_BASE}/releases/download/${RELEASE_TAG}/vgon-ponto-agent-v1.0.0-linux-arm64.deb`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Button variant="outline" className="w-full">
-                <Download className="w-4 h-4 mr-2" /> Baixar .deb
-              </Button>
-            </Link>
-            <p className="text-xs text-slate-500">Instale: `sudo dpkg -i vgon-ponto-agent*.deb`</p>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Windows 10/11 ou Server 2019+ (x64) · Porta local da tela de configuração:{" "}
+              <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">127.0.0.1:3737</code> ·
+              O instalador nunca contém credenciais — elas são configuradas na tela local após a instalação.
+            </p>
           </CardContent>
         </Card>
       </section>
@@ -306,118 +354,61 @@ export default async function IntegracoesAgentPage() {
               <CardTitle className="flex items-center gap-2 text-xl">
                 <TerminalSquare className="w-5 h-5" /> Passo a passo de instalação (Windows)
               </CardTitle>
-              <CardDescription>6 passos para colocar o agent rodando em 5 minutos.</CardDescription>
+              <CardDescription>Do download às marcações fluindo em 4 passos.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <ol className="space-y-6 list-decimal pl-5 text-slate-700 dark:text-slate-300 space-y-5 [&>li::marker]:font-bold [&>li::marker]:text-slate-900">
+              <ol className="space-y-6 list-decimal pl-5 text-slate-700 dark:text-slate-300 [&>li::marker]:font-bold [&>li::marker]:text-slate-900">
                 <li className="space-y-2">
-                  <div className="font-semibold text-slate-900 dark:text-slate-50">Extraia o .zip</div>
+                  <div className="font-semibold text-slate-900 dark:text-slate-50">
+                    Baixe e execute o Setup <em>como administrador</em>
+                  </div>
                   <div className="text-sm leading-relaxed">
-                    Baixe o arquivo <em>vgon-ponto-agent-v1.0.0-win-x64.zip</em>, extraia em uma pasta permanente
-                    (ex: <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">C:\VGON\agent</code>).
-                    Não rode de dentro da pasta Downloads nem do .zip direto.
+                    Use o botão de download acima. O instalador cria o serviço Windows{" "}
+                    <strong>VgonPontoAgent</strong> (início automático), instala o runtime embutido em{" "}
+                    <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">C:\Program Files\VGON\Ponto Agent</code>{" "}
+                    e os dados em{" "}
+                    <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">C:\ProgramData\VGON\Ponto Agent</code>.
+                    Em atualizações, sua configuração é preservada.
                   </div>
                 </li>
 
                 <li className="space-y-2">
                   <div className="font-semibold text-slate-900 dark:text-slate-50">
-                    Instale Node.js (se não tiver)
+                    Abra a tela “VGON PONTO Agent — Configurações”
                   </div>
                   <div className="text-sm leading-relaxed">
-                    Abra PowerShell e digite <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">node --version</code>.
-                    Se der erro, baixe o LTS (≥ 18) em{" "}
-                    <Link className="text-sky-700 underline" target="_blank" rel="noopener noreferrer" href="https://nodejs.org/pt-br/download">
-                      nodejs.org <ExternalLink className="w-3 h-3 inline" />
-                    </Link>
+                    Pelo menu Iniciar (atalho criado pelo instalador) ou acessando{" "}
+                    <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">http://127.0.0.1:3737</code>{" "}
+                    na própria máquina.
                   </div>
                 </li>
 
                 <li className="space-y-2">
                   <div className="font-semibold text-slate-900 dark:text-slate-50">
-                    Configure o <code>agent.config.json</code>
+                    Configure iDFace + API e salve
                   </div>
                   <div className="text-sm leading-relaxed">
-                    Copie o arquivo <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">agent.config.json.example</code>
-                    &nbsp;para <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">agent.config.json</code> e
-                    preencha com as credenciais do seu iDFace (na LAN) e o{" "}
-                    <strong>Agent Token</strong> exibido na tabela abaixo (primeiro agent tem token padrão do seed).
-                    Exemplo pronto (substitua IP/usuário/senha):
+                    Preencha a URL do iDFace na LAN, usuário/senha do equipamento, a URL da API e o{" "}
+                    <strong>Agent Token</strong> da tabela abaixo. Valide com <em>Testar iDFace</em> e{" "}
+                    <em>Testar Servidor</em>, clique em <strong>Salvar Configuração</strong> e depois em{" "}
+                    <strong>Reiniciar Serviço</strong>. Referência do formato:
                   </div>
-                  <CopyCode code={AGENT.JSON_EXAMPLE} />
+                  <CopyCode code={buildConfigExample(firstToken)} />
                 </li>
 
                 <li className="space-y-2">
                   <div className="font-semibold text-slate-900 dark:text-slate-50">
-                    Rode o primeiro teste em modo MOCK
+                    Confirme o status ONLINE na tabela
                   </div>
                   <div className="text-sm leading-relaxed">
-                    Valide tudo sem precisar do iDFace real — gera marcações sintéticas e envia para API.
-                    Abra PowerShell na pasta do agent e digite:
+                    Em até 1 minuto o heartbeat deve marcar o agent como{" "}
+                    <Badge variant="success" className="align-middle">ONLINE</Badge> e a coluna{" "}
+                    <strong>Enviados hoje</strong> começa a contar as marcações. Use os botões{" "}
+                    <strong>Sincronizar</strong> e <strong>Testar</strong> na linha do agent para forçar ações
+                    imediatas (executadas no próximo poll de ≤15s).
                   </div>
-                  <CopyCode code={`# No PowerShell (na pasta do agent onde está o package.json)
-$env:MOCK = "true"
-npm install
-npm run start
-# ou no cmd (batch):
-#   set MOCK=true
-#   npm install && npm start`} />
-                  <p className="text-sm text-emerald-700 dark:text-emerald-400">
-                    ✅ Procure no log por <code>Heartbeat OK</code> e{" "}
-                    <code>Lote enviado para API created=N</code>. Se aparecer, seu token e a URL estão corretos.
-                  </p>
-                </li>
-
-                <li className="space-y-2">
-                  <div className="font-semibold text-slate-900 dark:text-slate-50">
-                    Troque para MOCK=false e use credenciais reais do iDFace
-                  </div>
-                  <div className="text-sm leading-relaxed">
-                    Edite <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">agent.config.json</code> novamente,
-                    set <code>mock</code> para <code>false</code> e ajuste{" "}
-                    <code>idface.url</code> (IP LAN do iDFace), usuário e senha padrão (admin/admin ou definido no equipamento).
-                    Confirme pingando o IP: <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">ping 192.168.1.150 -t</code>.
-                    Depois rode:
-                  </div>
-                  <CopyCode code={`# Confirme primeiro
-npm run start
-# Se aparecer login OK, login iDFace, ... capturados eventos -> pronto.`} />
-                </li>
-
-                <li className="space-y-2">
-                  <div className="font-semibold text-slate-900 dark:text-slate-50">
-                    (Opcional) Instale como Windows Service
-                  </div>
-                  <div className="text-sm leading-relaxed">
-                    Assim o agent inicia sozinho após reinício do servidor/posto. Rode PowerShell COMO ADMINISTRADOR:
-                  </div>
-                  <CopyCode code={`npm install -g node-windows
-npm run service:install
-# para desinstalar: npm run service:uninstall`} />
-                  <p className="text-xs text-slate-500">
-                    No sistema de produção Vgon recomenda-se usar um mini-pc Windows ou Raspberry Pi sempre ligado,
-                    com usuário comum e o agent como serviço rodando em background.
-                  </p>
                 </li>
               </ol>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <Clock3 className="w-5 h-5" /> Modo MOCK (validação rápida sem iDFace)
-              </CardTitle>
-              <CardDescription>
-                Pule todos os passos do iDFace real e veja marcações sintéticas chegando no dashboard em 30 segundos.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-slate-700 dark:text-slate-300">
-                Crie um arquivo <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">agent.config.json</code>
-                com o conteúdo abaixo e rode <code>npm install &amp;&amp; npm run start</code>.
-                Ele vai gerar ~16 marcações/colaborador/dia e enviar via batch idempotente para a API.
-              </p>
-              <CopyCode code={AGENT.JSON_MOCK} />
             </CardContent>
           </Card>
         </section>
@@ -433,10 +424,10 @@ npm run service:install
               <ol className="relative border-l border-slate-200 dark:border-slate-800 ml-2 space-y-5">
                 {[
                   { t: "iDFace", d: "Relógio na LAN (IP privado). Apenas HTTP local.", ic: Fingerprint },
-                  { t: "VGON PONTO Agent", d: "Windows/Raspberry. Polling 30s. Fila SQLite offline.", ic: ServerIcon },
+                  { t: "VGON PONTO Agent", d: "Serviço Windows. Sync 30s, poll 15s, heartbeat 60s. Fila SQLite offline.", ic: ServerIcon },
                   { t: "HTTPS WAN", d: "Agent → POST /api/agents/time-entries/batch (idempotente).", ic: Network },
                   { t: "EasyPanel + Postgres", d: "Nuvem Vgon. UNIQUE(deviceId,eventId) = sem duplica.", ic: HardDriveDownload },
-                  { t: "Command Queue", d: "Servidor cria PENDING. Agent POLL a cada 30s, executa, PATCH resultado.", ic: RefreshCcw },
+                  { t: "Command Queue", d: "Servidor enfileira PENDING. Agent POLL a cada 15s, executa, PATCH resultado.", ic: RefreshCcw },
                 ].map((x, i) => (
                   <li key={x.t} className="pl-5">
                     <div className="absolute -left-2.5 w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center ring-2 ring-white dark:ring-slate-950">
@@ -482,30 +473,6 @@ npm run service:install
               </Link>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Link href={GITHUB_BASE} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:underline">
-                  <ExternalLink className="w-4 h-4 text-slate-700" /> GitHub Releases
-                </Link>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Verifique sempre releases atualizadas, changelog e checksums em{" "}
-                <Link
-                  className="text-sky-700 underline"
-                  href={`${GITHUB_BASE}/releases/tag/${RELEASE_TAG}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {RELEASE_TAG}
-                </Link>
-                .
-              </p>
-            </CardContent>
-          </Card>
         </aside>
       </div>
 
@@ -518,7 +485,7 @@ npm run service:install
               <Users className="w-5 h-5 text-slate-700" /> Agents cadastrados
             </CardTitle>
             <CardDescription>
-              Status em tempo real, token para colar no <code>agent.config.json</code> e contadores.
+              Status em tempo real, contadores do dia, ações remotas (via Command Queue) e token de configuração.
             </CardDescription>
           </div>
           <Link href="/integracoes/logs">
@@ -527,7 +494,7 @@ npm run service:install
         </CardHeader>
         <CardContent>
           <Suspense fallback={<div className="text-sm text-slate-500 p-4">Carregando agents...</div>}>
-            <AgentTable rows={agents} seedToken={AGENT.TOKEN} />
+            <AgentTable result={result} />
           </Suspense>
         </CardContent>
       </Card>
@@ -535,20 +502,41 @@ npm run service:install
   );
 }
 
-function AgentTable({ rows, seedToken }: { rows: AgentRow[]; seedToken: string }) {
-  if (rows.length === 0) {
+function AgentTable({ result }: { result: LoadAgentsResult }) {
+  // Falha na consulta (ex: banco indisponivel) — nunca quebra a pagina inteira.
+  if (!result.ok) {
     return (
-      <div className="border rounded-lg p-6 text-center bg-slate-50 dark:bg-slate-900">
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Nenhum agent cadastrado ainda. Execute o <code>prisma db seed</code> para criar o agent inicial{" "}
-          <strong>Agent Local 001 - Sede Vgon</strong> com token:
+      <div className="border border-rose-200 rounded-lg p-6 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-900">
+        <p className="text-sm font-semibold text-rose-800 dark:text-rose-200 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4" /> Não foi possível carregar a lista de VGON PONTO Agents.
         </p>
-        <CopyCode code={seedToken} />
+        <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">
+          Verifique a conexão com o banco de dados e recarregue a página. Os detalhes foram registrados no log do servidor.
+        </p>
+        <p className="text-[11px] font-mono text-rose-500 mt-2 break-all">{result.message}</p>
       </div>
     );
   }
+
+  const rows = result.rows;
+
+  if (rows.length === 0) {
+    return (
+      <div className="border rounded-lg p-6 text-center bg-slate-50 dark:bg-slate-900 space-y-3">
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+          Nenhum VGON PONTO Agent cadastrado.
+        </p>
+        <p className="text-sm text-slate-600 dark:text-slate-400 max-w-xl mx-auto">
+          Execute <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">npx prisma db seed</code>{" "}
+          no servidor para criar o agent inicial <strong>Agent Local 001 — Sede Vgon</strong> e seu token
+          de autenticação. O token aparecerá nesta tabela após o cadastro.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="rounded-md border overflow-hidden">
+    <div className="rounded-md border overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
@@ -558,6 +546,9 @@ function AgentTable({ rows, seedToken }: { rows: AgentRow[]; seedToken: string }
             <TableHead className="text-right">Heartbeat</TableHead>
             <TableHead className="text-right">Último sync</TableHead>
             <TableHead className="text-right">Pendentes</TableHead>
+            <TableHead className="text-right">Enviados hoje</TableHead>
+            <TableHead className="text-right">Falhas hoje</TableHead>
+            <TableHead>Ações</TableHead>
             <TableHead>Agent Token (Bearer)</TableHead>
           </TableRow>
         </TableHeader>
@@ -567,11 +558,14 @@ function AgentTable({ rows, seedToken }: { rows: AgentRow[]; seedToken: string }
               <TableCell>
                 <div className="font-medium text-slate-900 dark:text-slate-50">{r.name}</div>
                 <div className="text-xs text-slate-500">
-                  v{r.version ?? "?"} · {r.syncIntervalSec}s · {r._count.devices} device(s) · {r._count.commands} cmd
+                  v{r.version ?? "?"} · sync {r.syncIntervalSec}s · {r._count.devices} device(s) · {r._count.commands} cmd
                 </div>
               </TableCell>
               <TableCell>
                 <StatusBadge s={r.status} />
+                {!r.lastHeartbeatAt && (
+                  <div className="text-[11px] text-slate-500 mt-1">Agent sem comunicação.</div>
+                )}
               </TableCell>
               <TableCell>
                 <div className="text-sm font-mono">{r.computerName ?? "—"}</div>
@@ -580,18 +574,19 @@ function AgentTable({ rows, seedToken }: { rows: AgentRow[]; seedToken: string }
               <TableCell className="text-right whitespace-nowrap text-sm">{fmtDate(r.lastHeartbeatAt)}</TableCell>
               <TableCell className="text-right whitespace-nowrap text-sm">{fmtDate(r.lastSyncAt)}</TableCell>
               <TableCell className="text-right font-mono">{r.pendingCount}</TableCell>
+              <TableCell className="text-right font-mono text-emerald-700 dark:text-emerald-400">{r.sentToday}</TableCell>
+              <TableCell className={`text-right font-mono ${r.failedToday > 0 ? "text-rose-600 font-semibold" : ""}`}>
+                {r.failedToday}
+              </TableCell>
+              <TableCell>
+                <AgentActions agentId={r.id} agentName={r.name} />
+              </TableCell>
               <TableCell>
                 <div className="max-w-xs">
                   <div className="truncate font-mono text-xs bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded border border-slate-200 dark:border-slate-800" title={r.token}>
                     {r.token}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => navigator?.clipboard?.writeText(r.token).catch(() => {})}
-                    className="text-[11px] mt-1 text-sky-700 hover:underline flex items-center gap-1"
-                  >
-                    <CopyIcon className="w-3 h-3" /> Copiar token
-                  </button>
+                  <CopyTokenButton token={r.token} />
                 </div>
               </TableCell>
             </TableRow>
@@ -599,28 +594,5 @@ function AgentTable({ rows, seedToken }: { rows: AgentRow[]; seedToken: string }
         </TableBody>
       </Table>
     </div>
-  );
-}
-
-// shim components used but not in the minimal sidebar imports — avoid build errors
-function RefreshCcw(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-      <path d="M3 21v-5h5" />
-    </svg>
-  );
-}
-
-function Users(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
   );
 }

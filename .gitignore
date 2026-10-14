@@ -51,3 +51,7 @@ agent/logs
 agent/dist
 agent/node_modules
 agent.config.json
+
+# agent installer (artefatos de build)
+agent/installer/staging
+agent/installer/Output
