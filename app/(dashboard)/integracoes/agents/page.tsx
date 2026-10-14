@@ -37,9 +37,9 @@ import {
   Clock3,
   ExternalLink,
   Server as ServerIcon,
-  Copy as CopyIcon,
 } from "lucide-react";
 import { Suspense } from "react";
+import { CopyCode, CopyTokenButton } from "@/components/integrations/copy-code";
 
 const GITHUB_BASE = "https://github.com/Vgonsolucoes/pontovgon";
 const RELEASE_TAG = "agent-v1.0.0";
@@ -69,26 +69,41 @@ type AgentRow = {
   };
 };
 
-async function loadAgents(): Promise<AgentRow[]> {
-  const rows = await prisma.agents.findMany({
-    where: { deletedAt: null },
-    include: {
-      _count: {
-        select: {
-          heartbeats: true,
-          commands: true,
-          sync_logs: true,
-          devices: true,
+type LoadAgentsResult =
+  | { ok: true; rows: AgentRow[] }
+  | { ok: false; message: string };
+
+// Nunca deixa uma falha de consulta derrubar a pagina inteira:
+// retorna estado de erro para exibicao amigavel e registra detalhes no log do servidor.
+async function loadAgents(): Promise<LoadAgentsResult> {
+  try {
+    const rows = await prisma.agents.findMany({
+      where: { deletedAt: null },
+      include: {
+        _count: {
+          select: {
+            heartbeats: true,
+            commands: true,
+            sync_logs: true,
+            devices: true,
+          },
         },
+        heartbeats: { take: 1, orderBy: { sentAt: "desc" }, select: { pendingEvents: true } },
       },
-      heartbeats: { take: 1, orderBy: { sentAt: "desc" }, select: { pendingEvents: true } },
-    },
-    orderBy: [{ enabled: "desc" }, { createdAt: "desc" }],
-  });
-  return rows.map((r: any) => ({
-    ...r,
-    pendingCount: r.heartbeats[0]?.pendingEvents ?? 0,
-  })) as AgentRow[];
+      orderBy: [{ enabled: "desc" }, { createdAt: "desc" }],
+    });
+    const mapped = rows.map((r: any) => ({
+      ...r,
+      pendingCount: r.heartbeats[0]?.pendingEvents ?? 0,
+    })) as AgentRow[];
+    return { ok: true, rows: mapped };
+  } catch (err) {
+    console.error("[integracoes/agents] falha ao consultar agents:", err);
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : "Erro desconhecido ao consultar o banco de dados.",
+    };
+  }
 }
 
 function fmtDate(d: Date | null): string {
@@ -105,23 +120,6 @@ function StatusBadge({ s }: { s: string }) {
     API_OFFLINE: "outline",
   };
   return <Badge variant={(variants[s] ?? "outline") as any}>{s}</Badge>;
-}
-
-function CopyCode({ code }: { code: string }) {
-  return (
-    <div className="relative group">
-      <pre className="bg-slate-950 text-slate-100 rounded-lg p-4 text-xs sm:text-sm overflow-x-auto whitespace-pre-wrap break-words border border-slate-800">
-        <code>{code}</code>
-      </pre>
-      <button
-        type="button"
-        onClick={() => navigator?.clipboard?.writeText(code).catch(() => {})}
-        className="hidden sm:flex absolute right-2 top-2 items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700"
-      >
-        <CopyIcon className="w-3 h-3" /> Copiar
-      </button>
-    </div>
-  );
 }
 
 function AgentTokenSeed() {
@@ -173,7 +171,7 @@ function AgentTokenSeed() {
 export default async function IntegracoesAgentPage() {
   const session = await requireRole(["MASTER", "ADMIN"]);
   const AGENT = AgentTokenSeed();
-  const agents = await loadAgents();
+  const result = await loadAgents();
 
   return (
     <div className="space-y-6 p-4 sm:p-8 max-w-[1400px] mx-auto">
@@ -527,7 +525,7 @@ npm run service:install
         </CardHeader>
         <CardContent>
           <Suspense fallback={<div className="text-sm text-slate-500 p-4">Carregando agents...</div>}>
-            <AgentTable rows={agents} seedToken={AGENT.TOKEN} />
+            <AgentTable result={result} seedToken={AGENT.TOKEN} />
           </Suspense>
         </CardContent>
       </Card>
@@ -535,18 +533,41 @@ npm run service:install
   );
 }
 
-function AgentTable({ rows, seedToken }: { rows: AgentRow[]; seedToken: string }) {
-  if (rows.length === 0) {
+function AgentTable({ result, seedToken }: { result: LoadAgentsResult; seedToken: string }) {
+  // Falha na consulta (ex: banco indisponivel) — nunca quebra a pagina inteira.
+  if (!result.ok) {
     return (
-      <div className="border rounded-lg p-6 text-center bg-slate-50 dark:bg-slate-900">
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Nenhum agent cadastrado ainda. Execute o <code>prisma db seed</code> para criar o agent inicial{" "}
-          <strong>Agent Local 001 - Sede Vgon</strong> com token:
+      <div className="border border-rose-200 rounded-lg p-6 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-900">
+        <p className="text-sm font-semibold text-rose-800 dark:text-rose-200 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4" /> Não foi possível carregar a lista de VGON PONTO Agents.
         </p>
-        <CopyCode code={seedToken} />
+        <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">
+          Verifique a conexão com o banco de dados e recarregue a página. Os detalhes foram registrados no log do servidor.
+        </p>
+        <p className="text-[11px] font-mono text-rose-500 mt-2 break-all">{result.message}</p>
       </div>
     );
   }
+
+  const rows = result.rows;
+
+  if (rows.length === 0) {
+    return (
+      <div className="border rounded-lg p-6 text-center bg-slate-50 dark:bg-slate-900 space-y-3">
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+          Nenhum VGON PONTO Agent cadastrado.
+        </p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          Execute o <code>prisma db seed</code> para criar o agent inicial{" "}
+          <strong>Agent Local 001 - Sede Vgon</strong> com token:
+        </p>
+        <div className="max-w-2xl mx-auto text-left">
+          <CopyCode code={seedToken} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-md border overflow-hidden">
       <Table>
@@ -572,6 +593,9 @@ function AgentTable({ rows, seedToken }: { rows: AgentRow[]; seedToken: string }
               </TableCell>
               <TableCell>
                 <StatusBadge s={r.status} />
+                {!r.lastHeartbeatAt && (
+                  <div className="text-[11px] text-slate-500 mt-1">Agent sem comunicação.</div>
+                )}
               </TableCell>
               <TableCell>
                 <div className="text-sm font-mono">{r.computerName ?? "—"}</div>
@@ -585,13 +609,7 @@ function AgentTable({ rows, seedToken }: { rows: AgentRow[]; seedToken: string }
                   <div className="truncate font-mono text-xs bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded border border-slate-200 dark:border-slate-800" title={r.token}>
                     {r.token}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => navigator?.clipboard?.writeText(r.token).catch(() => {})}
-                    className="text-[11px] mt-1 text-sky-700 hover:underline flex items-center gap-1"
-                  >
-                    <CopyIcon className="w-3 h-3" /> Copiar token
-                  </button>
+                  <CopyTokenButton token={r.token} />
                 </div>
               </TableCell>
             </TableRow>
