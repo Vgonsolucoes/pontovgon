@@ -14,7 +14,7 @@ function LoginInnerForm() {
   const search = useSearchParams();
   const callbackUrl = search?.get("callbackUrl") || "/dashboard";
   const [email, setEmail] = useState("master@vgon.com.br");
-  const [password, setPassword] = useState("Mudar@123");
+  const [password, setPassword] = useState("Admin@123");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -99,7 +99,7 @@ export function LoginDevHint() {
       <div className="pl-2.5">
         <p className="text-sm font-semibold text-sky-800">Credenciais padrão (dev)</p>
         <p className="text-xs text-sky-700">
-          <span className="font-semibold">E-mail:</span> master@vgon.com.br · <span className="font-semibold">Senha:</span> Mudar@123
+          <span className="font-semibold">E-mail:</span> master@vgon.com.br · <span className="font-semibold">Senha:</span> Admin@123
         </p>
       </div>
     </Alert>
