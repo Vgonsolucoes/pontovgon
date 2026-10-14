@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=20-alpine
 ARG ALPINE_VERSION=3.20
-ARG BUILDKIT_CACHE_BUST=20261006_v43_remove_chown_app_operation_not_permitted
+ARG BUILDKIT_CACHE_BUST=20261014_v44_remove_prisma_engine_env_fix_500_login
 
 # ---------- DEPS ----------
 FROM node:${NODE_VERSION} AS deps
@@ -12,8 +12,6 @@ ENV CACHE_BUST=${BUILDKIT_CACHE_BUST}
 RUN apk add --no-cache libc6-compat python3 make g++
 COPY package.json package-lock.json* ./
 RUN npm install --no-audit --no-fund
-RUN find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true
-RUN ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
 
 # ---------- BUILDER ----------
 FROM node:${NODE_VERSION} AS builder
@@ -21,12 +19,10 @@ WORKDIR /app
 ARG BUILDKIT_CACHE_BUST
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV CACHE_BUST=${BUILDKIT_CACHE_BUST}
-ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
 COPY --from=deps /app/node_modules ./node_modules
 
-# === DEPLOY 30 FIX: INSTALAR OPENSSL NO BUILDER ANTES DO PRISMA GENERATE ===
-# Sem openssl aqui, Prisma detecta errado → gera engine openssl-1.1.x e falha
-# pois nosso ENV força PRISMA_QUERY_ENGINE_LIBRARY=openssl-3.0.x
+# === OPENSSL NO BUILDER ANTES DO PRISMA GENERATE ===
+# Sem openssl aqui, Prisma detecta errado e gera engine para outra plataforma
 RUN apk add --no-cache openssl ca-certificates libc6-compat \
   && echo "=== OPENSSL VERSION (BUILDER) ===" \
   && openssl version || echo "openssl nao encontrado"
@@ -35,7 +31,7 @@ RUN apk add --no-cache openssl ca-certificates libc6-compat \
 # INVALIDACAO CACHE LITERAL (NAO USAR ${VAR} INTERPOLACAO)
 # A CADA DEPLOY ALTERAR O TEXTO ABAIXO PARA FORCAR NOVA LAYER
 # ============================================================
-RUN echo "LITERAL_CACHE_BUST_2026_10_06_DEPLOY_43_REMOVE_CHOWN_APP_NO_PERMISSION"
+RUN echo "LITERAL_CACHE_BUST_2026_10_14_DEPLOY_44_REMOVE_PRISMA_ENGINE_ENV"
 
 COPY . .
 
@@ -45,12 +41,13 @@ RUN echo "=== [BUILDER v27] ARQUIVOS PAGE/ROUTE APOS COPY . . ===" \
   && echo "=== /app/app du ===" \
   && du -sh /app/app 2>/dev/null || true
 
-# Prisma generate
-RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_06_DEPLOY_43_USER_NEXTJS_NAO_CHOWN_ROOT_DIR" \
+# Prisma generate (SEM PRISMA_QUERY_ENGINE_LIBRARY — senao o generate NAO copia o engine)
+RUN echo "LITERAL_PRISMA_GEN_BUST_2026_10_14_DEPLOY_44_GENERATE_FATAL" \
   && openssl version \
   && npx prisma generate \
-  && find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true \
-  && ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
+  && test -f /app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node \
+  && echo "PRISMA ENGINE OK: libquery_engine-linux-musl-openssl-3.0.x.so.node presente" \
+  && ls -la /app/node_modules/.prisma/client/
 
 ENV NEXT_BUILT=1
 RUN npm run build \
@@ -79,8 +76,7 @@ WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
-    HOSTNAME=0.0.0.0 \
-    PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
+    HOSTNAME=0.0.0.0
 
 RUN apk add --no-cache ca-certificates openssl tini libc6-compat
 
@@ -107,11 +103,8 @@ RUN echo "=== /tmp/nft-originals contents:" && find /tmp/nft-originals -maxdepth
   && chown -R nextjs:nodejs /app
 USER nextjs
 
-# Remocao final openssl 1.1
-RUN find /app/node_modules/.prisma/client -name 'libquery_engine-linux-musl*.so.node' ! -name '*openssl-3.0.x*' -delete 2>/dev/null || true
+# Verificacao final: engine Prisma musl openssl-3.0.x DEVE existir no runner
 RUN ls -la /app/node_modules/.prisma/client/ 2>/dev/null || true
-
-USER nextjs
 
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
