@@ -96,7 +96,7 @@ export default function DashboardPage() {
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold">Bom dia, Master 👋</h2>
-          <p className="text-sm text-slate-500">Segunda-feira, {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })} · Acompanhe a jornada em tempo real.</p>
+          <p className="text-sm text-slate-500">Segunda-feira, {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" })} · Acompanhe a jornada em tempo real.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline">
