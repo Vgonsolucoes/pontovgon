@@ -10,10 +10,10 @@ const timeEntrySchema = z.object({
   employeeExternalId: z.string().max(120).optional(),
   employeeId: z.string().max(60).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  time: z.string().regex(/^\d{1,2}:\d{2}(:\d{2})?$/),
+  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/),
   timestamp: z.coerce.date().optional(),
   kind: z.string().max(40).optional(),
-  origin: z.enum(["IDFACE", "MANUAL", "ADMINISTRATIVO", "WEB"]).default("IDFACE"),
+  origin: z.literal("IDFACE").default("IDFACE"),
   originalEventRef: z.string().max(255).optional(),
   note: z.string().max(500).optional(),
 });
@@ -43,50 +43,13 @@ export async function POST(req: Request) {
     const body = parsed.data;
     const startedAt = body.startedAt ?? new Date();
 
-    const deviceCode = body.deviceUniqueId ?? body.deviceSerialNumber ?? "iDFace-" + auth.agent.id;
-    const where = body.deviceUniqueId
-      ? { deviceUniqueId: body.deviceUniqueId }
-      : body.deviceSerialNumber
-        ? { serialNumber: body.deviceSerialNumber }
-        : { id: "default-device-id" };
-    const upsertById = !body.deviceUniqueId && !body.deviceSerialNumber;
-
-    const deviceRecord = upsertById
-      ? await prisma.devices.upsert({
-          where: {
-            id:
-              (await prisma.devices.findFirst({
-                where: { agentId: auth.agent.id },
-                take: 1,
-                select: { id: true },
-              }))?.id ?? "000000000000000000000000000000000001",
-          },
-          create: {
-            deviceUniqueId: deviceCode,
-            serialNumber: deviceCode.slice(0, 100),
-            name: `Device ${deviceCode.slice(0, 40)}`,
-            manufacturer: "Control ID",
-            model: "iDFace",
-            status: "ONLINE",
-            agentId: auth.agent.id,
-          },
-          update: { lastCommunication: startedAt },
-          select: { id: true, deviceUniqueId: true, serialNumber: true },
-        })
-      : await prisma.devices.upsert({
-          where,
-          create: {
-            deviceUniqueId: body.deviceUniqueId ?? deviceCode,
-            serialNumber: body.deviceSerialNumber ?? deviceCode.slice(0, 100),
-            name: `Device ${deviceCode.slice(0, 40)}`,
-            manufacturer: "Control ID",
-            model: "iDFace",
-            status: "ONLINE",
-            agentId: auth.agent.id,
-          },
-          update: { lastCommunication: startedAt, agentId: auth.agent.id },
-          select: { id: true, deviceUniqueId: true, serialNumber: true },
-        });
+    if (!body.deviceUniqueId && !body.deviceSerialNumber) return NextResponse.json({ error: "Identificação do equipamento obrigatória" }, { status: 400 });
+    const deviceRecord = await prisma.devices.findFirst({ where: {
+      agentId: auth.agent.id, deletedAt: null,
+      ...(body.deviceUniqueId ? { deviceUniqueId: body.deviceUniqueId } : {}),
+      ...(body.deviceSerialNumber ? { serialNumber: body.deviceSerialNumber } : {}),
+    }, select: { id: true, deviceUniqueId: true, serialNumber: true } });
+    if (!deviceRecord) return NextResponse.json({ error: "Equipamento não cadastrado ou não vinculado a este Agent" }, { status: 403 });
 
     let created = 0;
     let duplicated = 0;
@@ -110,16 +73,25 @@ export async function POST(req: Request) {
           note: item.note,
           device: { connect: { id: deviceRecord.id } },
         } as any;
-        if (item.employeeId) {
-          data.employee = { connect: { id: item.employeeId } };
-        }
         try {
+          if (item.externalEventId.startsWith("MOCK-")) throw new Error("Evento simulado não permitido");
+          if (new Date(item.date + "T00:00:00Z").toISOString().slice(0, 10) !== item.date) throw new Error("Data inválida");
+          // Resolve identity from the registered device mapping, never trust a caller-supplied employee UUID.
+          const link = item.employeeExternalId ? await prisma.device_users.findUnique({ where: { deviceId_externalId: { deviceId: deviceRecord.id, externalId: item.employeeExternalId } }, include: { employee: true } }) : null;
+          if (link?.employee && !link.employee.deletedAt) data.employee = { connect: { id: link.employee.id } };
+          // Preserve the original device identity for reconciliation when no mapping exists.
+          data.originalEventRef = JSON.stringify({ employeeExternalId: item.employeeExternalId ?? null, eventRef: item.originalEventRef ?? item.externalEventId });
           await prisma.time_entries.create({ data, select: { id: true } });
           created += 1;
         } catch (err) {
           const code = (err as { code?: string })?.code;
           if (code === "P2002") {
-            duplicated += 1;
+            const original = await prisma.time_entries.findUnique({ where: { deviceId_externalEventId: { deviceId: deviceRecord.id, externalEventId: item.externalEventId } }, select: { id: true } });
+            if (original) duplicated += 1;
+            else {
+              failed += 1;
+              failedItems.push({ idx, externalEventId: item.externalEventId, error: "Conflito de unicidade sem evento correspondente; preservado na fila para conciliação" });
+            }
           } else {
             failed += 1;
             failedItems.push({
@@ -164,7 +136,7 @@ export async function POST(req: Request) {
       created,
       duplicated,
       failed,
-      failedItems: failedItems.slice(0, 50),
+      failedItems,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

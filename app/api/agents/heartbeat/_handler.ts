@@ -9,6 +9,7 @@ const heartbeatSchema = z.object({
   localIp: z.string().max(80).optional(),
   osVersion: z.string().max(150).optional(),
   deviceStatus: z.enum(["ONLINE", "OFFLINE", "MANUTENCAO", "DESATIVADO"]).optional(),
+  deviceUniqueId: z.string().min(1).max(120).optional(),
   deviceLastComm: z.coerce.date().optional(),
   deviceLastSync: z.coerce.date().optional(),
   pendingEvents: z.number().int().nonnegative().default(0),
@@ -31,6 +32,7 @@ export async function POST(req: Request) {
       );
     }
     const body = parsed.data;
+    if (body.raw?.mock === true) return NextResponse.json({ error: "Heartbeat simulado não permitido" }, { status: 400 });
     const now = new Date();
 
     const [, heartbeat] = await Promise.all([
@@ -64,6 +66,12 @@ export async function POST(req: Request) {
       }),
     ]);
 
+    if (body.deviceStatus && body.deviceUniqueId) {
+      await prisma.devices.updateMany({ where: { agentId: auth.agent.id, deviceUniqueId: body.deviceUniqueId, deletedAt: null }, data: {
+        status: body.deviceStatus,
+        ...(body.deviceLastComm && body.deviceLastComm <= now ? { lastCommunication: body.deviceLastComm } : {}),
+      } });
+    }
     return NextResponse.json({
       ok: true,
       serverNow: now.toISOString(),

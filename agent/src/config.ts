@@ -22,10 +22,14 @@ export const agentConfigSchema = z.object({
   syncIntervalSec: z.coerce.number().int().min(5).max(600).default(30),
   pollCommandsIntervalSec: z.coerce.number().int().min(5).max(600).default(30),
   heartbeatIntervalSec: z.coerce.number().int().min(5).max(600).default(30),
-  mock: z.coerce.boolean().default(false),
+  mock: z.boolean().default(false),
   dbPath: z.string().default("./data/agent.db"),
   logLevel: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
   idface: idfaceConfigSchema,
+}).superRefine((cfg, ctx) => {
+  if (cfg.mock && (!["test", "development"].includes(process.env.NODE_ENV ?? "") || process.env.VGON_ALLOW_MOCK !== "true")) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["mock"], message: "Simulação exige NODE_ENV=test/development e VGON_ALLOW_MOCK=true em ambiente isolado." });
+  }
 });
 
 export type IDFaceConfig = z.output<typeof idfaceConfigSchema>;
@@ -77,10 +81,10 @@ export function loadConfig(overridePath?: string): AgentConfig {
       raw = {
         apiUrl: envApi,
         agentToken: envToken,
-        mock: envMock ?? true,
+        mock: envMock ?? false,
         idface: {
-          url: process.env.IDFACE_URL ?? "http://127.0.0.1",
-          deviceId: process.env.IDFACE_DEVICE_ID ?? "mock",
+          url: process.env.IDFACE_URL ?? "",
+          deviceId: process.env.IDFACE_DEVICE_ID ?? "",
         },
       };
     } else {

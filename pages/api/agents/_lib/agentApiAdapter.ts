@@ -15,7 +15,7 @@ export function nodeReqToFetchRequest(req: NextApiRequest, host = "localhost"): 
 
   let body: BodyInit | undefined;
   if (method !== "GET" && method !== "HEAD") {
-    if (Buffer.isBuffer(req.body)) body = req.body;
+    if (Buffer.isBuffer(req.body)) body = new Uint8Array(req.body);
     else if (req.body !== undefined && typeof req.body !== "string") body = JSON.stringify(req.body);
     else if (typeof req.body === "string") body = req.body;
   }
