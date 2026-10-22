@@ -24,7 +24,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$NodeVersion = "20.18.0",
+  [string]$NodeVersion = "22.23.4",
   [string]$WinSwVersion = "v2.12.0",
   [string]$IsccPath = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
   [switch]$SkipInno
@@ -53,9 +53,11 @@ Assert-Cmd node "Instale o Node.js 20+: https://nodejs.org/"
 Assert-Cmd npm  "Instale o Node.js 20+: https://nodejs.org/"
 Push-Location $AgentDir
 try {
-  npm ci
+  npm.cmd ci
   if ($LASTEXITCODE -ne 0) { throw "npm ci falhou (exit $LASTEXITCODE)" }
-  npm run build
+  npm.cmd test
+  if ($LASTEXITCODE -ne 0) { throw "Testes do Agent falharam" }
+  npm.cmd run build
   if ($LASTEXITCODE -ne 0) { throw "tsc build falhou (exit $LASTEXITCODE)" }
 } finally { Pop-Location }
 
@@ -65,7 +67,9 @@ Write-Host "    Versao do Agent: $Version"
 
 # ---------------------------------------------------------------- 2) staging
 Step "2/7 - Montando staging/"
-if (Test-Path $StagingDir) { Remove-Item $StagingDir -Recurse -Force }
+$expectedStaging = [IO.Path]::GetFullPath((Join-Path $InstallerDir "staging"))
+if ([IO.Path]::GetFullPath($StagingDir) -ne $expectedStaging) { throw "Caminho de staging invalido" }
+if (Test-Path -LiteralPath $StagingDir) { Remove-Item -LiteralPath $StagingDir -Recurse -Force }
 New-Item -ItemType Directory -Force -Path "$StagingDir\runtime", "$StagingDir\app", "$StagingDir\service" | Out-Null
 
 Copy-Item (Join-Path $AgentDir "dist") -Destination (Join-Path $StagingDir "app\dist") -Recurse
@@ -77,7 +81,7 @@ if (Test-Path (Join-Path $AgentDir "package-lock.json")) {
 Step "3/7 - Instalando dependencias de producao no staging (npm ci --omit=dev)"
 Push-Location (Join-Path $StagingDir "app")
 try {
-  npm ci --omit=dev
+  npm.cmd ci --omit=dev
   if ($LASTEXITCODE -ne 0) { throw "npm ci --omit=dev falhou (exit $LASTEXITCODE)" }
 } finally { Pop-Location }
 
@@ -91,14 +95,16 @@ Invoke-WebRequest -Uri $nodeZipUrl -OutFile $tmpZip
 $expected = ((Invoke-WebRequest -Uri $shasumsUrl).Content -split "`n" |
   Where-Object { $_ -match "$nodeZipName\.zip$" }) -split "\s+" | Select-Object -First 1
 $actual = (Get-FileHash $tmpZip -Algorithm SHA256).Hash.ToLower()
-if ($expected -and ($expected.ToLower() -ne $actual)) {
+if (-not $expected -or ($expected.ToLower() -ne $actual)) {
   throw "SHA-256 do runtime Node divergente! esperado=$expected obtido=$actual"
 }
 Write-Host "    SHA-256 do runtime conferido: $actual"
 Expand-Archive $tmpZip -DestinationPath (Join-Path $env:TEMP $nodeZipName) -Force
 Copy-Item (Join-Path $env:TEMP "$nodeZipName\$nodeZipName\node.exe") -Destination (Join-Path $StagingDir "runtime\node.exe")
+& (Join-Path $StagingDir "runtime\node.exe") (Join-Path $InstallerDir "smoke-test.cjs") (Join-Path $StagingDir "app")
+if ($LASTEXITCODE -ne 0) { throw "Smoke test do runtime/SQLite falhou; instalador nao sera publicado" }
 Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $env:TEMP $nodeZipName) -Recurse -Force -ErrorAction SilentlyContinue
+# Preserve extracted runtime in TEMP for reproducible local validation.
 
 Step "5/7 - Baixando WinSW $WinSwVersion"
 $winswUrl  = "https://github.com/winsw/winsw/releases/download/$WinSwVersion/WinSW-x64.exe"
@@ -129,7 +135,7 @@ if (-not $SkipInno) {
       throw "ISCC.exe nao encontrado em '$IsccPath'. Instale o Inno Setup 6 ou passe -IsccPath."
     }
   }
-  & $IsccPath (Join-Path $InstallerDir "vgon-ponto-agent.iss")
+  & $IsccPath "/Qp" "/DMyAppVersion=$Version" (Join-Path $InstallerDir "vgon-ponto-agent.iss")
   if ($LASTEXITCODE -ne 0) { throw "ISCC falhou (exit $LASTEXITCODE)" }
   $setupExe = Get-ChildItem $OutputDir -Filter "VGON-PONTO-Agent-Setup-*.exe" |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -159,10 +165,12 @@ $manifest = [ordered]@{
   builtAt      = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 }
 $manifestPath = Join-Path $OutputDir "agent-manifest.json"
-$manifest | ConvertTo-Json | Set-Content $manifestPath -Encoding utf8
-if (Test-Path $ManifestDest) {
+[IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+if ($setupExe) {
+  New-Item -ItemType Directory -Force -Path $ManifestDest | Out-Null
   Copy-Item $manifestPath -Destination $ManifestDest -Force
   if ($setupExe) { Copy-Item $setupExe.FullName -Destination $ManifestDest -Force }
+  Copy-Item (Join-Path $OutputDir "SHA256SUMS.txt") -Destination $ManifestDest -Force
   Write-Host "`nManifest copiado para public/downloads (pagina VGON PONTO Agent)."
 }
 

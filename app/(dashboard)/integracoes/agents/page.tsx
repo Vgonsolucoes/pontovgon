@@ -163,11 +163,14 @@ function loadAgentManifest(): AgentManifest | null {
     const p = path.join(process.cwd(), "public", "downloads", "agent-manifest.json");
     if (!fs.existsSync(p)) return null;
     const raw = JSON.parse(fs.readFileSync(p, "utf-8")) as Partial<AgentManifest>;
-    if (!raw.fileName || !raw.version || !raw.sha256) return null;
+    if (typeof raw.fileName !== "string" || !/^VGON-PONTO-Agent-Setup-[0-9]+\.[0-9]+\.[0-9]+\.exe$/.test(raw.fileName) ||
+        !raw.version || typeof raw.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(raw.sha256) ||
+        typeof raw.sizeBytes !== "number" || raw.sizeBytes <= 0) return null;
     const exeExists = fs.existsSync(
       path.join(process.cwd(), "public", "downloads", raw.fileName),
     );
     if (!exeExists) return null;
+    if (fs.statSync(path.join(process.cwd(), "public", "downloads", raw.fileName)).size !== raw.sizeBytes) return null;
     return {
       version: String(raw.version),
       fileName: String(raw.fileName),
@@ -274,16 +277,16 @@ export default async function IntegracoesAgentPage() {
           <CardContent className="space-y-3">
             {manifest ? (
               <>
-                <Link href={`/downloads/${manifest.fileName}`} target="_blank" rel="noopener noreferrer">
-                  <Button className="w-full">
+                  <Button asChild className="w-full">
+                    <a href={`/downloads/${manifest.fileName}`} download>
                     <Download className="w-4 h-4 mr-2" /> Baixar {manifest.fileName}
                     {manifest.sizeBytes > 0 && (
                       <span className="ml-1 opacity-80">
                         (~{(manifest.sizeBytes / 1024 / 1024).toFixed(0)} MB)
                       </span>
                     )}
+                    </a>
                   </Button>
-                </Link>
                 <dl className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
                   {[
                     ["Versão", `v${manifest.version}`],

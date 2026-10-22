@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isRecentCommunication } from "../server/lib/operational";
-import { acknowledgedBatch } from "../agent/src/services/acknowledgement";
+import { createRequire } from "node:module";
+const { acknowledgedBatch } = createRequire(import.meta.url)("../agent/src/services/acknowledgement.ts") as typeof import("../agent/src/services/acknowledgement");
 
 test("online requires recent, valid communication, never a future timestamp", () => {
   const now = Date.now();

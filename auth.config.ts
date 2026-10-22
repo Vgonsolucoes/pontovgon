@@ -54,7 +54,7 @@ export const authConfig: NextAuthConfig = {
         if (isLoggedIn) return Response.redirect(new URL("/dashboard", nextUrl));
         return true;
       }
-      const publicPrefixes = ["/_next", "/favicon", "/api/auth", "/api/agents", "/api/public"];
+      const publicPrefixes = ["/_next", "/favicon", "/api/auth", "/api/agents", "/api/public", "/downloads/"];
       if (nextUrl.pathname === "/" || publicPrefixes.some((p) => nextUrl.pathname.startsWith(p))) return true;
       if (!isLoggedIn) return Response.redirect(new URL("/login", nextUrl));
       return true;

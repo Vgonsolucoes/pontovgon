@@ -18,6 +18,7 @@ import { ControlIdService, IDFaceTimeEvent, AgentCommand, CommandResult } from "
 import { VgonPontoApiClient } from "./services/VgonPontoApiClient";
 import { startUiServer } from "./ui/server";
 import { acknowledgedBatch } from "./services/acknowledgement";
+import { AGENT_VERSION } from "./version";
 import type { Server as HttpServer } from "node:http";
 
 const LOGO = String.raw`
@@ -161,7 +162,7 @@ class AgentRuntime {
     try {
       const device = await this.ctrl.getStatus();
       const res = await this.api.heartbeat({
-        version: "0.1.0",
+        version: AGENT_VERSION,
         computerName: os.hostname(),
         localIp: ips,
         osVersion: `${os.type()} ${os.release()} ${os.arch()}`,

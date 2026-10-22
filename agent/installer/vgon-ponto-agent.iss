@@ -10,7 +10,9 @@
 ; ============================================================
 
 #define MyAppName "VGON PONTO Agent"
-#define MyAppVersion "1.0.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0.1"
+#endif
 #define MyAppPublisher "Vgon Solucoes em Informatica"
 #define MyAppServiceName "VgonPontoAgent"
 #define MyAppURL "https://vgonponto-web.54myeq.easypanel.host"
@@ -34,7 +36,7 @@ WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no
 UninstallDisplayName={#MyAppName}
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion={#MyAppVersion}.0
 VersionInfoDescription={#MyAppName} — Setup
 DisableProgramGroupPage=yes
 
@@ -62,7 +64,7 @@ Name: "{group}\Desinstalar {#MyAppName}"; Filename: "{uninstallexe}"
 ; Restringe a pasta de dados a Administradores + SYSTEM (protege credenciais e token da UI)
 Filename: "icacls.exe"; Parameters: """{commonappdata}\VGON\Ponto Agent"" /inheritance:r /grant:r ""*S-1-5-32-544:(OI)(CI)F"" ""*S-1-5-18:(OI)(CI)F"""; Flags: runhidden waituntilterminated; StatusMsg: "Aplicando permissões de segurança…"
 ; Registra e inicia o serviço Windows
-Filename: "{app}\service\VgonPontoAgentService.exe"; Parameters: "install"; Flags: runhidden waituntilterminated; StatusMsg: "Registrando o serviço {#MyAppServiceName}…"
+Filename: "{app}\service\VgonPontoAgentService.exe"; Parameters: "install"; Check: not ServiceExists; Flags: runhidden waituntilterminated; StatusMsg: "Registrando o serviço {#MyAppServiceName}…"
 Filename: "{app}\service\VgonPontoAgentService.exe"; Parameters: "start"; Flags: runhidden waituntilterminated; StatusMsg: "Iniciando o serviço {#MyAppServiceName}…"
 
 [UninstallRun]

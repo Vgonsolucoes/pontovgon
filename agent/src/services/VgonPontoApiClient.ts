@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from "axios";
 import type { AgentConfig } from "../config";
 import type { IDFaceTimeEvent, AgentCommand, CommandResult } from "./ControlIdService";
 import { pino } from "pino";
+import { AGENT_VERSION } from "../version";
 
 export interface HeartbeatInput {
   version?: string;
@@ -31,7 +32,7 @@ export class VgonPontoApiClient {
       timeout: 30000,
       headers: {
         Authorization: `Bearer ${this.token}`,
-        "User-Agent": "VGON-PONTO-Agent/0.1.0",
+        "User-Agent": `VGON-PONTO-Agent/${AGENT_VERSION}`,
         "Content-Type": "application/json",
       },
     });
