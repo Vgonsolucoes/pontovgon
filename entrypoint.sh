@@ -7,7 +7,10 @@ npx prisma migrate deploy
 
 # Explicit bootstrap only; ordinary restarts must not seed operational data.
 if [ "${RUN_BOOTSTRAP_SEED:-false}" = "true" ]; then
+  echo "[entrypoint] Running explicitly enabled Prisma DB Seed..."
   npx prisma db seed
+else
+  echo "[entrypoint] Skipping seed (RUN_BOOTSTRAP_SEED is not true)."
 fi
 
 echo "[entrypoint] === NFT FIX RUNTIME: Copiando api/agents ORIGINAL para .next/server/app/api ==="
