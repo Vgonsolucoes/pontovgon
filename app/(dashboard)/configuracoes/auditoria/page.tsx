@@ -1,3 +1,5 @@
+import { prisma } from "@/server/db";
+import { Prisma, AuditAction } from "@prisma/client";
 import Link from "next/link";
 import { Activity, ArrowLeft, ChevronLeft, ChevronRight, SearchIcon } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,22 +96,15 @@ export default async function AuditPage({
   const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
   const pageSize = 25;
 
-  // Dados exemplo (demonstração) — quando DB estiver disponível, trocar por prisma.audit_logs.findMany
-  const rows = Array.from({ length: 14 }).map((_, i) => {
-    const d = new Date();
-    d.setMinutes(d.getMinutes() - ((page - 1) * pageSize * 7) - i * 7);
-    return {
-      id: `audit-demo-${page}-${i}`,
-      actorEmail: i % 7 === 0 ? "master@vgon.com.br" : "rh@vgon.com.br",
-      action: (actions[(i + (page % actions.length)) % (actions.length - 1) + 1].value) as any,
-      entity: entitiesList[(i % (entitiesList.length - 1)) + 1],
-      entityId: i % 3 === 0 ? null : `rec-${1000 + i}`,
-      ip: i % 5 === 0 ? null : "10.0.0." + (20 + (i % 20)),
-      userAgent: i % 4 === 0 ? null : "Windows · Chrome 128",
-      createdAt: d,
-    };
-  });
-  const total = 132;
+  const where: Prisma.audit_logsWhereInput = {
+    ...(action && Object.values(AuditAction).includes(action as AuditAction) ? { action: action as AuditAction } : {}),
+    ...(entity ? { entity } : {}),
+    ...(q ? { OR: [{ actorEmail: { contains: q, mode: "insensitive" } }, { entityId: { contains: q, mode: "insensitive" } }] } : {}),
+  };
+  const [rows, total] = await prisma.$transaction([
+    prisma.audit_logs.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.audit_logs.count({ where }),
+  ]);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (

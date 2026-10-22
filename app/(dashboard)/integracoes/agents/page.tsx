@@ -1,5 +1,6 @@
 import { requireRole } from "@/server/lib/auth";
 import { prisma } from "@/server/db";
+import { isRecentCommunication } from "@/server/lib/operational";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -128,6 +129,7 @@ async function loadAgents(): Promise<LoadAgentsResult> {
     );
     const mapped = rows.map((r: any) => ({
       ...r,
+      status: r.enabled && isRecentCommunication(r.lastHeartbeatAt) ? r.status : "OFFLINE",
       pendingCount: r.heartbeats[0]?.pendingEvents ?? 0,
       sentToday: aggByAgent.get(r.id)?.sent ?? 0,
       failedToday: aggByAgent.get(r.id)?.failed ?? 0,

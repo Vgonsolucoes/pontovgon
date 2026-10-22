@@ -6,6 +6,8 @@
   "author": "Vgon Soluções em Informática",
   "license": "UNLICENSED",
   "scripts": {
+    "test": "tsx --test tests/*.test.ts agent/test/timezone.test.ts",
+    "typecheck": "tsc --noEmit",
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",

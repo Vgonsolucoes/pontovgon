@@ -21,14 +21,13 @@ export async function requireRole(roles: UserRole[]): Promise<NonNullable<Sessio
 export function canAccessEmployee(
   session: { user?: { id?: string; role?: UserRole | null; employeeId?: string | null } },
   targetEmployeeId: string,
+  targetManagerId?: string | null,
 ): boolean {
   const role = session.user?.role;
   if (!role) return false;
   if (["MASTER", "ADMIN", "RH"].includes(role)) return true;
   if (role === "GESTOR") {
-    // Para GESTOR, validação adicional viria do campo managerId dos funcionários.
-    // Neste helper retornamos true; valide em cada caminho específico.
-    return true;
+    return !!session.user?.employeeId && targetManagerId === session.user.employeeId;
   }
   if (role === "FUNCIONARIO") {
     return !!session.user?.employeeId && session.user.employeeId === targetEmployeeId;
