@@ -1,6 +1,6 @@
 import process from "node:process";
 import os from "node:os";
-import { pino } from "pino";
+import { pino, type Logger } from "pino";
 import { loadConfig, AgentConfig } from "./config";
 import {
   getDb,
@@ -17,6 +17,7 @@ import {
 import { ControlIdService, IDFaceTimeEvent, AgentCommand, CommandResult } from "./services/ControlIdService";
 import { VgonPontoApiClient } from "./services/VgonPontoApiClient";
 import { startUiServer } from "./ui/server";
+import { acknowledgedBatch } from "./services/acknowledgement";
 import type { Server as HttpServer } from "node:http";
 
 const LOGO = String.raw`
@@ -41,7 +42,7 @@ function getIps(): string[] {
 
 class AgentRuntime {
   cfg: AgentConfig;
-  log: pino.Logger;
+  log: Logger;
   ctrl!: ControlIdService;
   api!: VgonPontoApiClient;
   running = false;
@@ -158,6 +159,7 @@ class AgentRuntime {
     const pending = (await db.prepare("SELECT COUNT(*) as c FROM pending_events").get() as { c: number }).c;
     const ips = getIps().join(", ");
     try {
+      const device = await this.ctrl.getStatus();
       const res = await this.api.heartbeat({
         version: "0.1.0",
         computerName: os.hostname(),
@@ -165,6 +167,9 @@ class AgentRuntime {
         osVersion: `${os.type()} ${os.release()} ${os.arch()}`,
         pendingEvents: pending,
         agentStatus: status,
+        deviceStatus: device.online ? "ONLINE" : "OFFLINE",
+        deviceUniqueId: this.cfg.idface.deviceId,
+        deviceLastComm: device.lastCommunication,
         raw: { mock: this.cfg.mock, pid: process.pid, uptimeSec: Math.floor(process.uptime()), bootAt: this.bootAt.toISOString() },
       });
       this.log.debug({ heartbeatId: res.heartbeatId, pending, nextSec: res.nextHeartbeatSec }, "Heartbeat OK");
@@ -234,16 +239,17 @@ class AgentRuntime {
         { received: resp.received, created: resp.created, duplicated: resp.duplicated, failed: resp.failed, syncLogId: resp.syncLogId },
         "Lote enviado para API",
       );
-      const failedIds = new Set((resp.failedItems ?? []).map((x) => x.externalEventId));
+      const acknowledged = new Set(acknowledgedBatch(resp, items.map(i => i.externalEventId)));
+      const failedIds = new Set(items.filter(i => !acknowledged.has(i.externalEventId)).map(i => i.externalEventId));
       const processedOk = items
         .filter((i) => !failedIds.has(i.externalEventId))
         .map((i) => i.externalEventId);
       const okPending = pending.filter((p) => {
         try {
           const ee = JSON.parse(p.payload_json).externalEventId;
-          return !failedIds.has(ee);
+          return acknowledged.has(ee);
         } catch {
-          return true;
+          return false;
         }
       });
       for (const p of pending) {

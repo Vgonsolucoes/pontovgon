@@ -9,6 +9,9 @@ export interface HeartbeatInput {
   localIp?: string;
   osVersion?: string;
   pendingEvents: number;
+  deviceStatus?: "ONLINE" | "OFFLINE";
+  deviceUniqueId?: string;
+  deviceLastComm?: string;
   agentStatus?: "ONLINE" | "OFFLINE" | "SYNCING" | "AUTH_ERROR" | "API_OFFLINE";
   raw?: Record<string, unknown>;
 }
