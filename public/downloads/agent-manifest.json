@@ -1,11 +1,11 @@
 {
   "name": "VGON-PONTO-Agent-Setup",
-  "version": "1.0.1",
-  "fileName": "VGON-PONTO-Agent-Setup-1.0.1.exe",
-  "sha256": "ae1938553c469129410fb26b0d7a2e18c3031b26032dae1458816fa6a416f890",
-  "sizeBytes": 32002758,
+  "version": "1.0.2",
+  "fileName": "VGON-PONTO-Agent-Setup-1.0.2.exe",
+  "sha256": "94b94e0ae284b920ffeef2e84a53a88a9b848c8230f0a400f4c96013047e8a6a",
+  "sizeBytes": 32001798,
   "arch": "windows-x64",
   "nodeVersion": "22.23.4",
   "winswVersion": "v2.12.0",
-  "builtAt": "2026-10-22T19:30:51Z"
+  "builtAt": "2026-10-22T20:04:08Z"
 }

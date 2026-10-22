@@ -2,6 +2,8 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { randomBytes } from "node:crypto";
+import { hasUiSession, matchesSecret, UI_COOKIE } from "./auth";
 import { execFile, spawn } from "node:child_process";
 import { pino } from "pino";
 import {
@@ -140,15 +142,22 @@ function tailLogs(n: number): { file: string | null; lines: string[] } {
 
 export function startUiServer(hooks: UiHooks, port = UI_PORT): http.Server {
   const token = getUiToken();
+  const session = randomBytes(32).toString("hex");
 
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
+      const host = req.headers.host;
+      if (!["127.0.0.1", "localhost"].some(h => host === `${h}:${req.socket.localPort ?? port}`) ||
+          (req.headers.origin && req.headers.origin !== `http://${host}`)) {
+        json(res, 403, { ok: false, error: "Origem local inválida" });
+        return;
+      }
       const given = url.searchParams.get("token") ?? (req.headers["x-ui-token"] as string | undefined);
-      if (given !== token) {
+      if (!matchesSecret(given, token) && !hasUiSession(req.headers.cookie, session)) {
         if (url.pathname === "/") {
           res.writeHead(401, { "Content-Type": "text/plain; charset=utf-8" });
-          res.end("Acesso negado: token da UI ausente ou inválido. Abra pelo atalho 'VGON PONTO Agent — Configurações'.");
+          res.end("Acesso protegido. Abra 'VGON PONTO Agent — Configurações' pelo menu Iniciar e confirme a elevação de administrador. O atalho autoriza este navegador; depois você pode reabrir http://127.0.0.1:3737 nesta sessão.");
         } else {
           json(res, 401, { ok: false, error: "unauthorized" });
         }
@@ -158,8 +167,13 @@ export function startUiServer(hooks: UiHooks, port = UI_PORT): http.Server {
       const route = `${req.method} ${url.pathname}`;
 
       if (route === "GET /") {
+        if (matchesSecret(url.searchParams.get("token"), token)) {
+          res.writeHead(303, { Location: "/", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "Set-Cookie": `${UI_COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/` });
+          res.end();
+          return;
+        }
         const html = Buffer.from(renderConfigPage(token), "utf-8");
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": html.length, "Cache-Control": "no-store" });
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": html.length, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
         res.end(html);
         return;
       }

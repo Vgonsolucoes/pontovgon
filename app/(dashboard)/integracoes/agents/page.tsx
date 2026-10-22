@@ -384,7 +384,8 @@ export default async function IntegracoesAgentPage() {
                   <div className="text-sm leading-relaxed">
                     Pelo menu Iniciar (atalho criado pelo instalador) ou acessando{" "}
                     <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">http://127.0.0.1:3737</code>{" "}
-                    na própria máquina.
+                    na própria máquina, após abrir o atalho uma vez e confirmar a elevação de administrador.
+                    O atalho autoriza o navegador; acessar o endereço sem essa autorização será bloqueado.
                   </div>
                 </li>
 

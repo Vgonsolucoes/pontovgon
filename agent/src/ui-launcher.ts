@@ -8,6 +8,7 @@
  */
 import http from "node:http";
 import { exec, spawn } from "node:child_process";
+import { once } from "node:events";
 import { getUiToken } from "./config";
 import { startUiServer, UI_PORT } from "./ui/server";
 
@@ -43,7 +44,8 @@ function openBrowser(url: string) {
 /** Relança este launcher elevado (UAC) e encerra o processo atual. */
 function relaunchElevated(): never {
   const scriptPath = process.argv[1] ?? "";
-  const ps = `Start-Process -FilePath '${process.execPath}' -ArgumentList '"${scriptPath}"' -Verb RunAs`;
+  const quote = (s: string) => "'" + s.replace(/'/g, "''") + "'";
+  const ps = `Start-Process -FilePath ${quote(process.execPath)} -ArgumentList ${quote('"' + scriptPath + '" --elevated')} -Verb RunAs -WindowStyle Hidden`;
   spawn("powershell.exe", ["-NoProfile", "-Command", ps], {
     detached: true,
     stdio: "ignore",
@@ -56,28 +58,37 @@ async function main() {
   let token: string;
   try {
     token = getUiToken();
-  } catch {
+  } catch (e) {
     // Sem permissão na pasta do ProgramData (ACL restrita a Admins/SYSTEM)
-    relaunchElevated();
+    if (["EACCES", "EPERM"].includes((e as NodeJS.ErrnoException).code ?? "") && !process.argv.includes("--elevated")) relaunchElevated();
+    throw e;
   }
 
-  const url = `http://127.0.0.1:${UI_PORT}/?token=${token}`;
+  const url = `http://127.0.0.1:${UI_PORT}/?token=${encodeURIComponent(token)}`;
 
   if (await ping(UI_PORT, token)) {
     openBrowser(url);
     return;
   }
 
-  startUiServer({
+  const server = startUiServer({
     mode: "standalone",
     getRuntimeStatus: () => null,
     syncNow: () => Promise.reject(new Error("Serviço parado — inicie o serviço para sincronizar")),
   });
 
-  // aguarda a porta abrir antes de abrir o navegador
-  setTimeout(() => openBrowser(url), 400);
+  try { await once(server, "listening"); }
+  catch (e) {
+    // Another launcher/service may have bound the port while we were starting.
+    for (let n = 0; n < 10; n++) {
+      if (await ping(UI_PORT, token)) { openBrowser(url); return; }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    throw e;
+  }
+  openBrowser(url);
   console.log(`VGON PONTO Agent — Configurações (modo standalone) em http://127.0.0.1:${UI_PORT}`);
   console.log("O serviço está parado: configure e use 'Iniciar Serviço' na tela.");
 }
 
-void main();
+void main().catch(e => { console.error("Não foi possível abrir a configuração do Agent:", e instanceof Error ? e.message : String(e)); process.exitCode = 1; });

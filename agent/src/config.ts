@@ -1,7 +1,7 @@
 import { z } from "zod";
 import fs from "node:fs";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
+import { loadOrCreateUiToken } from "./ui/token-store";
 
 export const idfaceConfigSchema = z.object({
   url: z.string().min(1).url({ message: "idface.url deve ser uma URL LAN válida (ex: http://192.168.1.150)" }),
@@ -129,16 +129,5 @@ export function saveConfig(cfg: AgentConfig, targetPath?: string): string {
  * Gerado com crypto.randomBytes — não é ID de evento de ponto.
  */
 export function getUiToken(): string {
-  const tokenPath = path.join(PROGRAMDATA_DIR, "ui-token");
-  try {
-    const existing = fs.readFileSync(tokenPath, "utf-8").trim();
-    if (existing.length >= 32) return existing;
-  } catch {
-    // não existe ou sem permissão — tenta criar abaixo
-  }
-  const token = randomBytes(24).toString("hex");
-  const dir = path.dirname(tokenPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(tokenPath, token, { encoding: "utf-8", mode: 0o600 });
-  return token;
+  return loadOrCreateUiToken(path.join(PROGRAMDATA_DIR, "ui-token"));
 }
