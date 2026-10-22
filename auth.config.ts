@@ -14,13 +14,6 @@ declare module "next-auth" {
     };
   }
 }
-declare module "@auth/core/jwt" {
-  interface JWT {
-    role?: UserRole | null;
-    employeeId?: string | null;
-  }
-}
-
 export const authConfig: NextAuthConfig = {
   providers: [],
   session: { strategy: "jwt", maxAge: 60 * 60 * 12 },
