@@ -1,4 +1,5 @@
-import { PrismaClient, UserRole, DeviceStatus, AgentStatus, Prisma } from "@prisma/client";
+import { PrismaClient, UserRole, DeviceStatus, AgentStatus } from "@prisma/client";
+import { ensureSeedPosition } from "./seed-positions";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -57,11 +58,10 @@ async function main() {
     ["Auxiliar Administrativo", undefined],
   ];
   for (const [p, did] of seeds) {
-    const deptIdVal = (did ?? Prisma.DbNull) as unknown as string;
-    await prisma.positions.upsert({
-      where: { name_departmentId: { name: p, departmentId: deptIdVal } },
-      create: { name: p, departmentId: did ?? null, active: true },
-      update: { active: true, deletedAt: null },
+    // Serialize seed writers, including the NULL department case (not unique in PostgreSQL).
+    await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(824711205)`;
+      await ensureSeedPosition(tx.positions, p, did);
     });
   }
 
