@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/server/db";
 import { audit } from "@/server/lib/audit";
+import type { Prisma } from "@prisma/client";
 
 /**
  * Fila de comandos para um VGON PONTO Agent (disparo manual pelo dashboard).
@@ -18,7 +19,7 @@ const commandSchema = z.object({
     "SET_DEVICE_TIME",
     "PULL_ALL_EVENTS",
   ]),
-  payload: z.record(z.unknown()).optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function POST(
@@ -67,7 +68,7 @@ export async function POST(
     data: {
       agentId: agent.id,
       commandType: parsed.data.commandType,
-      payload,
+      payload: payload as Prisma.InputJsonObject,
       status: "PENDING",
     },
     select: { id: true, commandType: true, status: true, createdAt: true },
