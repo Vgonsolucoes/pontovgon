@@ -29,6 +29,11 @@ test("shortcut authorizes a session; plain URL works afterward but untrusted cli
     assert.equal(page.status, 200);
     assert.match(await page.text(), /VGON PONTO Agent/);
     assert.equal((await fetch(base + "/api/ping", { headers: { cookie } })).status, 200);
+    const invalidTest = await fetch(base + "/api/test/idface", {
+      method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ config: { idface: { url: "invalid" } } }),
+    });
+    assert.equal(invalidTest.status, 400);
+    assert.equal((await invalidTest.json() as { ok: boolean }).ok, false);
     assert.equal((await fetch(base + "/api/ping", { headers: { "x-ui-token": token } })).status, 200);
     assert.equal((await fetch(base + "/api/ping", { headers: { "x-ui-token": "invalid" } })).status, 401);
     assert.equal((await fetch(base + "/api/ping", { headers: { cookie: "vgon_ui_session=invalid" } })).status, 401);

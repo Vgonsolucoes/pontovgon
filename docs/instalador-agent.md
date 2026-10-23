@@ -1,6 +1,14 @@
-# Publicação do VGON PONTO Agent 1.0.2
+# Publicação do VGON PONTO Agent 1.0.3
 
-Artefato: `public/downloads/VGON-PONTO-Agent-Setup-1.0.2.exe`. A página `/integracoes/agents` lê o manifesto e disponibiliza o arquivo, versão, tamanho e SHA-256. O executável é distribuído pelo próprio site, sem depender de um link de release externo.
+Artefato: `public/downloads/VGON-PONTO-Agent-Setup-1.0.3.exe`. A página `/integracoes/agents` lê o manifesto e disponibiliza o arquivo, versão, tamanho e SHA-256. O executável é distribuído pelo próprio site, sem depender de um link de release externo.
+
+## Correção do teste iDFace na versão 1.0.3
+
+A consulta `system_information.fcgi` envia `{}` em vez de `null` e lê os campos oficiais `serial` e `version`. Respostas HTML ou JSON sem informações do equipamento não são consideradas online. A API da tela retorna `ok: false` quando a consulta falha e rejeita configurações inválidas, sem testar silenciosamente os valores antigos.
+
+Diagnóstico no equipamento físico com firmware 6.18.6: login HTTP 200; consulta com `null` HTTP 400 (`object expected`); consulta com `{}` HTTP 200. O cliente compilado corrigido confirmou `online: true`, firmware e presença do número de série usando a configuração existente, sem alterar dados do equipamento.
+
+O status do serviço reconhece a saída do Windows em português. Falhas de conexão ou timeout aparecem no console. Ao parar o próprio serviço, a tela desabilita as ações e orienta reabrir o atalho no menu Iniciar para iniciar novamente. Testes cobrem o contrato HTTP, respostas inválidas, status localizado, validação de configuração e falhas de conexão na tela.
 
 ## Correção da tela local na versão 1.0.2
 
@@ -24,6 +32,6 @@ Pacote Windows x64: Node.js 22.23.4, dependências de produção travadas em `ag
 
 Executar o instalador como administrador. Depois abrir **VGON PONTO Agent — Configurações** no menu Iniciar e informar o token real, endereço do iDFace e credenciais. O pacote não contém credenciais de produção. A configuração existente é preservada em atualizações; o instalador evita registrar novamente um serviço já instalado.
 
-O pacote não possui assinatura Authenticode da VGON. A conferência SHA-256 verifica a integridade do download. Os testes desta publicação não incluem instalação/desinstalação em máquina limpa nem comunicação com o iDFace físico; esses passos permanecem na homologação operacional.
+O pacote não possui assinatura Authenticode da VGON. A conferência SHA-256 verifica a integridade do download. Os testes desta publicação incluem login e consulta de status no iDFace físico; instalação/desinstalação em máquina limpa e sincronização completa de marcações permanecem na homologação operacional.
 
 Fontes dos componentes: https://nodejs.org/dist/ e https://github.com/winsw/winsw/releases . Compilador utilizado no build local: Inno Setup 6.2.2, obtido de https://github.com/jrsoftware/issrc/releases/tag/is-6_2_2 e com assinatura do fornecedor verificada.

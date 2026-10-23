@@ -18,6 +18,7 @@ import {
 import { ControlIdService } from "../services/ControlIdService";
 import { VgonPontoApiClient } from "../services/VgonPontoApiClient";
 import { renderConfigPage } from "./page";
+import { parseServiceState } from "./service-state";
 
 const log = pino({ name: "ui", level: process.env.LOG_LEVEL ?? "info" });
 
@@ -98,8 +99,7 @@ function exec(cmd: string, args: string[], timeoutMs = 8000): Promise<{ stdout: 
 async function queryService(): Promise<{ installed: boolean; state: string }> {
   const { stdout, code } = await exec("sc.exe", ["query", SERVICE_NAME]);
   if (code !== 0) return { installed: false, state: "NOT_INSTALLED" };
-  const m = stdout.match(/STATE\s*:\s*\d+\s+(\w+)/i);
-  return { installed: true, state: (m?.[1] ?? "UNKNOWN").toUpperCase() };
+  return { installed: true, state: parseServiceState(stdout) };
 }
 
 /** Agenda `net start` após 3s e encerra o processo atual (restart quando embedded). */
@@ -220,7 +220,11 @@ export function startUiServer(hooks: UiHooks, port = UI_PORT): http.Server {
         let cfg: AgentConfig | null = null;
         if (body?.config) {
           const parsed = agentConfigSchema.safeParse(body.config);
-          if (parsed.success) cfg = parsed.data;
+          if (!parsed.success) {
+            json(res, 400, { ok: false, error: "Configuração inválida; confira os campos antes de testar", issues: parsed.error.flatten() });
+            return;
+          }
+          cfg = parsed.data;
         }
         if (!cfg) {
           const loaded = loadConfigSafe();
@@ -242,7 +246,7 @@ export function startUiServer(hooks: UiHooks, port = UI_PORT): http.Server {
             return;
           }
           const status = await ctrl.getStatus();
-          json(res, 200, { ok: true, status });
+          json(res, 200, { ok: status.online, status, ...(status.error ? { error: status.error } : {}) });
         } catch (e) {
           json(res, 200, { ok: false, error: e instanceof Error ? e.message : String(e) });
         }
@@ -316,7 +320,7 @@ export function startUiServer(hooks: UiHooks, port = UI_PORT): http.Server {
         if (op === "stop") {
           if (hooks.mode === "embedded") {
             // responde antes de parar (o próprio processo será encerrado)
-            json(res, 200, { ok: true, detail: "Serviço será parado — esta tela ficará indisponível até novo start" });
+            json(res, 200, { ok: true, requiresLauncher: true, detail: "Serviço será parado. Para iniciar novamente, reabra 'VGON PONTO Agent — Configurações' pelo menu Iniciar." });
             setTimeout(() => void exec("sc.exe", ["stop", SERVICE_NAME]), 500);
           } else {
             const r = await exec("sc.exe", ["stop", SERVICE_NAME]);

@@ -123,7 +123,14 @@ var TOKEN = ${JSON.stringify(token)};
 function api(path, opts) {
   opts = opts || {};
   opts.headers = Object.assign({ "x-ui-token": TOKEN, "Content-Type": "application/json" }, opts.headers || {});
-  return fetch(path, opts).then(function (r) { return r.json().catch(function () { return { ok: false, error: "resposta não-JSON (HTTP " + r.status + ")" }; }); });
+  var controller = new AbortController();
+  opts.signal = controller.signal;
+  var timer = setTimeout(function () { controller.abort(); }, 25000);
+  return fetch(path, opts).then(function (r) {
+    return r.json().catch(function () { return { ok: false, error: "resposta não-JSON (HTTP " + r.status + ")" }; });
+  }).catch(function () {
+    return { ok: false, error: "A tela local não respondeu. Reabra 'VGON PONTO Agent — Configurações' pelo menu Iniciar e confira se o serviço está ativo." };
+  }).finally(function () { clearTimeout(timer); });
 }
 function say(msg) {
   var el = document.getElementById("console");
@@ -210,6 +217,12 @@ function svc(op) {
   say(label + " serviço " + "VgonPontoAgent …");
   api("/api/service", { method: "POST", body: JSON.stringify({ op: op }) }).then(function (r) {
     say(r);
+    if (r.ok && r.requiresLauncher) {
+      clearInterval(statusTimer);
+      document.querySelectorAll("button").forEach(function (button) { button.disabled = true; });
+      document.getElementById("hdrBadge").textContent = "Reabra pelo menu Iniciar";
+      return;
+    }
     setTimeout(loadStatus, 3000);
   });
 }
@@ -223,7 +236,7 @@ function showLogs() {
 
 loadStatus();
 loadCfg();
-setInterval(loadStatus, 15000);
+var statusTimer = setInterval(loadStatus, 15000);
 </script>
 </body>
 </html>`;

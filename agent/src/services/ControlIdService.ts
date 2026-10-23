@@ -3,6 +3,7 @@ import type { AgentConfig, IDFaceConfig } from "../config";
 import { pino } from "pino";
 import { getDb, getKv, setKv } from "../db/sqlite";
 import { spParts } from "./timezone";
+import { AGENT_VERSION } from "../version";
 
 export interface IDFaceTimeEvent {
   externalEventId: string;
@@ -109,9 +110,9 @@ export class ControlIdService {
     this.http = axios.create({
       baseURL: hasPort ? base : `${base}:${port}`,
       timeout: 8000,
-      headers: { "Content-Type": "application/json", "User-Agent": "VGON-PONTO-Agent/0.2.0" },
+      headers: { "Content-Type": "application/json", "User-Agent": `VGON-PONTO-Agent/${AGENT_VERSION}` },
       // Nunca logar corpo de requisições (contém credenciais em /login.fcgi).
-      transformRequest: [(data) => (typeof data === "string" ? data : JSON.stringify(data ?? null))],
+      transformRequest: [(data) => (typeof data === "string" ? data : JSON.stringify(data ?? {}))],
     });
   }
 
@@ -198,14 +199,17 @@ export class ControlIdService {
       };
     }
     try {
-      // POST /system_information.fcgi?session= (body null) — doc oficial.
-      const d = await this.postAuthed<Record<string, unknown>>("/system_information.fcgi", null);
-      const info = (d ?? {}) as Record<string, unknown>;
+      // No parameters; this firmware requires a JSON object, never literal null.
+      const info = await this.postAuthed<Record<string, unknown>>("/system_information.fcgi", {});
+      if (!info || typeof info !== "object" || Array.isArray(info) ||
+          !(str(info.serial) || str(info.serial_number) || str(info.version) || str(info.firmware_version))) {
+        throw new Error("Resposta inválida ao consultar informações do iDFace; verifique a URL do equipamento.");
+      }
       const net = (info.network ?? {}) as Record<string, unknown>;
       return {
         online: true,
-        serialNumber: str(info.serial_number) ?? this.cfg.deviceSerialNumber,
-        firmware: str(info.firmware_version) ?? this.cfg.deviceFirmware,
+        serialNumber: str(info.serial) ?? str(info.serial_number) ?? this.cfg.deviceSerialNumber,
+        firmware: str(info.version) ?? str(info.firmware_version) ?? this.cfg.deviceFirmware,
         mac: str(net.mac) ?? str(info.mac) ?? this.cfg.deviceMac,
         deviceUniqueId: str(info.device_id) ?? this.cfg.deviceId,
         lastCommunication: new Date().toISOString(),
@@ -363,8 +367,7 @@ export class ControlIdService {
         }
 
         case "REBOOT_DEVICE": {
-          // POST /reboot.fcgi?session= (body null) — doc oficial.
-          await this.postAuthed("/reboot.fcgi", null);
+          await this.postAuthed("/reboot.fcgi", {});
           this.dropSession(); // equipamento reinicia → sessão morre
           return { ok: true, result: { requested: true } };
         }
