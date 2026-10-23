@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import LoginForm, { LoginDevHint } from "@/components/auth/LoginForm";
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +14,8 @@ export const metadata = {
   description: "Acesse o painel administrativo ou portal do funcionário.",
 };
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  if ((await auth())?.user) redirect("/dashboard");
   const year = new Date().getFullYear();
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-gradient-to-br from-slate-50 via-white to-blue-50">

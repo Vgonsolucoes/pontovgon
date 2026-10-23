@@ -51,7 +51,8 @@ export const authConfig: NextAuthConfig = {
       const isLoggedIn = !!auth?.user;
       const isLoginPage = nextUrl.pathname === "/login";
       if (isLoginPage) {
-        if (isLoggedIn) return Response.redirect(new URL("/dashboard", nextUrl));
+        // The server page checks the current account before redirecting.
+        // An old cookie must not trap a deactivated account in a redirect loop.
         return true;
       }
       const publicPrefixes = ["/_next", "/favicon", "/api/auth", "/api/agents", "/api/public", "/downloads/"];

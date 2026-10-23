@@ -1,9 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { employeeInput, userInput, userWriteError, validCpf, type PeopleActor } from "../server/lib/people";
+import { authConfig } from "../auth.config";
 
 const employee = { name: "Pessoa de teste isolado", cpf: "529.982.247-25", registration: "ISOLATED-001" };
 const user = { name: "Conta de teste isolado", email: " TEST@EXAMPLE.INVALID ", password: "test-only-password", role: "FUNCIONARIO" };
+test("an old session cookie can reach login; anonymous people APIs return JSON 401", async () => {
+  const authorized = authConfig.callbacks!.authorized!;
+  const check = (path: string, session: unknown) => authorized({ auth: session, request: { nextUrl: new URL(`https://test.invalid${path}`) } } as any);
+  assert.equal(await check("/login", { user: { id: "old-cookie" } }), true);
+  const response = await check("/api/people/users", null) as Response;
+  assert.equal(response.status, 401);
+  assert.match((await response.json()).error, /sessão expirou/);
+});
 test("employee registration validates CPF and calendar dates, normalizes optional fields", () => {
   const parsed = employeeInput.parse(employee);
   assert.equal(parsed.cpf, "52998224725");
