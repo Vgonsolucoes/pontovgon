@@ -143,7 +143,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "hidden md:flex md:flex-col h-screen sticky top-0 border-r bg-sidebar text-sidebar-foreground transition-all duration-200",
+        "hidden md:flex md:flex-col h-screen sticky top-0 border-r bg-sidebar text-sidebar-foreground transition-all duration-200 no-print",
         collapsed ? "w-[74px]" : "w-64",
       )}
     >

@@ -378,6 +378,8 @@ model time_entries {
   note              String?
 
   employee          employees? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  reviewFlags       String[] @default([])
+  duplicateOfId     String?
   device            devices?   @relation(fields: [deviceId],   references: [id], onDelete: SetNull)
   adjustments       time_entry_adjustments[]
 
@@ -385,7 +387,7 @@ model time_entries {
   @@index([deviceId, importedAt])
   // Prevenção de duplicidade (MODELO B)
   @@unique([deviceId, externalEventId])
-  @@unique([origin, employeeId, date, time])
+  @@index([origin, employeeId, date, time])
 }
 
 model time_entry_requests {
@@ -397,6 +399,7 @@ model time_entry_requests {
   time           String?        // HH:mm
   type           String         // "IN_ADJUST" | "OUT_ADJUST" | "BREAK_IN" | "BREAK_OUT" | "JUSTIFICATION"
   justification  String?
+  targetEntryId  String?
   status         RequestStatus  @default(PENDENTE)
   evaluatorNote  String?
   createdAt      DateTime       @default(now()) @db.Timestamptz
@@ -468,6 +471,9 @@ model hour_bank {
   workDayId      String?
   note           String?
   createdById    String?
+  calculationKey String? @unique
+  reversalOfId String? @unique
+  needsRecalculation Boolean @default(false)
   createdAt      DateTime   @default(now()) @db.Timestamptz
 
   employee       employees  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -527,6 +533,15 @@ model holidays {
   updatedAt   DateTime @updatedAt @db.Timestamptz
   @@unique([date, scope])
   @@index([date])
+}
+
+model attendance_settings {
+  id String @id @default("default")
+  windowEnabled Boolean @default(true)
+  minutesBefore Int @default(30)
+  minutesAfter Int @default(30)
+  duplicateMinutes Int @default(2)
+  updatedAt DateTime @updatedAt @db.Timestamptz
 }
 
 // ================================================================

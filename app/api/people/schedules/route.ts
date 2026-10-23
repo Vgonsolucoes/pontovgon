@@ -25,6 +25,7 @@ export async function POST(request: Request) {
       const after = id
         ? await tx.work_schedules.update({ where: { id }, data: { ...write, days: { deleteMany: {}, create: days } }, include })
         : await tx.work_schedules.create({ data: { ...write, days: { create: days } }, include });
+      if (id) await tx.hour_bank.updateMany({ where: { origin: "DAILY_CALC", employee: { workScheduleId: id } }, data: { needsRecalculation: true } });
       await tx.audit_logs.create({ data: { userId: actor.id, actorEmail: actor.email, action: id ? "UPDATE" : "CREATE", entity: "work_schedules", entityId: after.id, before: auditJson(before), after: auditJson(after) } });
       return after;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

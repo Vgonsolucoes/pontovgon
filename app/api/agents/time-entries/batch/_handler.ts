@@ -3,6 +3,8 @@ import { prisma } from "@/server/db";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { attendanceTransaction } from "@/server/lib/attendance-transaction";
+import { loadPolicy, insideWindow, nearbyEntry, invalidateBank } from "@/server/lib/attendance-policy";
 
 const timeEntrySchema = z.object({
   externalEventId: z.string().min(1).max(120),
@@ -60,8 +62,7 @@ export async function POST(req: Request) {
       error: string;
     }> = [];
 
-    const results = await Promise.allSettled(
-      body.items.map(async (item, idx) => {
+    for (const [idx, item] of body.items.entries()) {
         const data = {
           externalEventId: item.externalEventId,
           date: new Date(item.date + "T00:00:00Z"),
@@ -77,12 +78,20 @@ export async function POST(req: Request) {
           if (item.externalEventId.startsWith("MOCK-")) throw new Error("Evento simulado não permitido");
           if (new Date(item.date + "T00:00:00Z").toISOString().slice(0, 10) !== item.date) throw new Error("Data inválida");
           // Resolve identity from the registered device mapping, never trust a caller-supplied employee UUID.
-          const link = item.employeeExternalId ? await prisma.device_users.findUnique({ where: { deviceId_externalId: { deviceId: deviceRecord.id, externalId: item.employeeExternalId } }, include: { employee: true } }) : null;
-          if (link?.employee && !link.employee.deletedAt) data.employee = { connect: { id: link.employee.id } };
-          // Preserve the original device identity for reconciliation when no mapping exists.
-          data.originalEventRef = JSON.stringify({ employeeExternalId: item.employeeExternalId ?? null, eventRef: item.originalEventRef ?? item.externalEventId });
-          await prisma.time_entries.create({ data, select: { id: true } });
-          created += 1;
+          await attendanceTransaction(async tx => {
+            const existing = await tx.time_entries.findUnique({ where: { deviceId_externalEventId: { deviceId: deviceRecord.id, externalEventId: item.externalEventId } }, select: { id: true } });
+            if (existing) return false;
+            const link = item.employeeExternalId ? await tx.device_users.findUnique({ where: { deviceId_externalId: { deviceId: deviceRecord.id, externalId: item.employeeExternalId } }, include: { employee: { include: { workSchedule: { include: { days: true } } } } } }) : null;
+            const employee = link?.employee && !link.employee.deletedAt ? link.employee : null;
+            const policy = await loadPolicy(tx), flags: string[] = [];
+            const duplicate = employee ? await nearbyEntry(tx, employee.id, item.date, data.time, policy.duplicateMinutes) : null;
+            if (duplicate) flags.push("DUPLICATE");
+            if (!employee) flags.push("UNLINKED");
+            else if (!insideWindow(item.date, data.time, employee.workSchedule?.deletedAt ? null : employee.workSchedule, policy)) flags.push("OUTSIDE_WINDOW");
+            await tx.time_entries.create({ data: { ...data, ...(employee ? { employee: { connect: { id: employee.id } } } : {}), originalEventRef: JSON.stringify({ employeeExternalId: item.employeeExternalId ?? null, eventRef: item.originalEventRef ?? item.externalEventId }), reviewFlags: flags, duplicateOfId: duplicate?.id ?? null, status: flags.length ? "INCONSISTENTE" : "VALIDO" }, select: { id: true } });
+            if (employee) await invalidateBank(tx, employee.id, [item.date]);
+            return true;
+          }).then(inserted => { if (!inserted) duplicated += 1; else created += 1; });
         } catch (err) {
           const code = (err as { code?: string })?.code;
           if (code === "P2002") {
@@ -101,9 +110,7 @@ export async function POST(req: Request) {
             });
           }
         }
-      }),
-    );
-    void results;
+    }
 
     const finishedAt = new Date();
     const status = failed > 0 ? (created > 0 || duplicated > 0 ? "PARTIAL" : "FAILED") : "SUCCESS";

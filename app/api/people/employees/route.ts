@@ -57,6 +57,7 @@ export async function POST(request: Request) {
       const write = { ...data, ...(photoData ? { photoUrl: photoData } : {}), admissionDate: admissionDate ? new Date(`${admissionDate}T00:00:00.000Z`) : null };
       const after = id ? await tx.employees.update({ where: { id }, data: write }) : await tx.employees.create({ data: write });
       await tx.audit_logs.create({ data: { userId: actor.id, actorEmail: actor.email, action: id ? "UPDATE" : "CREATE", entity: "employees", entityId: after.id, before: auditJson(before ? photoAudit(before) : null), after: auditJson(photoAudit(after)) } });
+      if (before && (before.workScheduleId !== after.workScheduleId || before.admissionDate?.getTime() !== after.admissionDate?.getTime())) await tx.hour_bank.updateMany({ where: { employeeId: after.id, origin: "DAILY_CALC" }, data: { needsRecalculation: true } });
       return photoAudit(after);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     return NextResponse.json(result, { status: id ? 200 : 201 });

@@ -33,10 +33,10 @@ export function ScheduleManager() {
     setDraft(value => ({ ...value, days: value.days.map(day => day.weekday === weekday ? { ...day, ...patch } : day) }));
     setErrors({}); setMessage("");
   }
-  function edit(row: Row) {
+  function edit(row: Row, clone = false) {
     const byDay = new Map(row.days.map(day => [day.weekday, day]));
-    setId(row.id); setErrors({}); setMessage("");
-    setDraft({ name: row.name, model: row.model, toleranceMinutes: String(row.toleranceMinutes), active: row.active, observations: row.observations || "", days: blank().days.map(day => { const saved = byDay.get(day.weekday); return saved ? { weekday: saved.weekday, isDayOff: saved.isDayOff, entryTime: saved.entryTime, breakStartTime: saved.breakStartTime, breakEndTime: saved.breakEndTime, departureTime: saved.departureTime } : day; }) });
+    setId(clone ? "" : row.id); setErrors({}); setMessage(clone ? "Horários copiados. Altere o nome e salve para criar outra jornada." : "");
+    setDraft({ name: clone ? row.name.slice(0, 110) + " (cópia)" : row.name, model: row.model, toleranceMinutes: String(row.toleranceMinutes), active: row.active, observations: row.observations || "", days: blank().days.map(day => { const saved = byDay.get(day.weekday); return saved ? { weekday: saved.weekday, isDayOff: saved.isDayOff, entryTime: saved.entryTime, breakStartTime: saved.breakStartTime, breakEndTime: saved.breakEndTime, departureTime: saved.departureTime } : day; }) });
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   async function save(event: FormEvent) {
@@ -76,7 +76,7 @@ export function ScheduleManager() {
     </CardContent></Card>
     <Card><CardHeader><CardTitle>Jornadas cadastradas</CardTitle></CardHeader><CardContent className="space-y-4">
       <Input aria-label="Pesquisar jornadas" placeholder="Pesquisar por nome" value={query} onChange={e => setQuery(e.target.value)} />
-      {loading ? <p role="status">Carregando jornadas…</p> : !loadError && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left">{["Nome", "Modelo", "Carga semanal", "Tolerância", "Funcionários", "Situação", "Ações"].map(label => <th key={label} className="p-2">{label}</th>)}</tr></thead><tbody>{rows.filter(row => row.name.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR"))).map(row => <tr key={row.id} className="border-b"><td className="p-2">{row.name}</td><td className="p-2">{scheduleModels[row.model]}</td><td className="p-2">{duration(row.weeklyLoadMinutes)}</td><td className="p-2">{row.toleranceMinutes} min</td><td className="p-2">{row._count.employees}</td><td className="p-2">{row.active ? "Ativa" : "Inativa"}</td><td className="p-2"><Button variant="outline" size="sm" disabled={busy} onClick={() => edit(row)} aria-label={`Editar ${row.name}`}>Editar</Button></td></tr>)}</tbody></table>{!rows.length && <p className="py-4 text-sm text-slate-500">Nenhuma jornada cadastrada. Preencha os horários acima para criar a primeira.</p>}</div>}
+      {loading ? <p role="status">Carregando jornadas…</p> : !loadError && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left">{["Nome", "Modelo", "Carga semanal", "Tolerância", "Funcionários", "Situação", "Ações"].map(label => <th key={label} className="p-2">{label}</th>)}</tr></thead><tbody>{rows.filter(row => row.name.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR"))).map(row => <tr key={row.id} className="border-b"><td className="p-2">{row.name}</td><td className="p-2">{scheduleModels[row.model]}</td><td className="p-2">{duration(row.weeklyLoadMinutes)}</td><td className="p-2">{row.toleranceMinutes} min</td><td className="p-2">{row._count.employees}</td><td className="p-2">{row.active ? "Ativa" : "Inativa"}</td><td className="p-2"><Button variant="outline" size="sm" disabled={busy} onClick={() => edit(row)} aria-label={`Editar ${row.name}`}>Editar</Button><Button className="ml-2" variant="outline" size="sm" disabled={busy} onClick={() => edit(row, true)} aria-label={`Clonar ${row.name}`}>Clonar</Button></td></tr>)}</tbody></table>{!rows.length && <p className="py-4 text-sm text-slate-500">Nenhuma jornada cadastrada. Preencha os horários acima para criar a primeira.</p>}</div>}
     </CardContent></Card>
   </div>;
 }
