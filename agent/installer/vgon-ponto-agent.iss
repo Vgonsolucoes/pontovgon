@@ -11,7 +11,7 @@
 
 #define MyAppName "VGON PONTO Agent"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.3"
+  #define MyAppVersion "1.0.4"
 #endif
 #define MyAppPublisher "Vgon Solucoes em Informatica"
 #define MyAppServiceName "VgonPontoAgent"

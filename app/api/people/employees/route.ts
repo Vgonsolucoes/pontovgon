@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { employeeInput } from "@/server/lib/people";
+import { facePhoto, photoAudit } from "@/server/lib/face-photo";
 import { auditJson, peopleActor, PeopleError, peopleError, validationError } from "@/server/lib/people-api";
 
 export async function GET() {
@@ -15,16 +16,18 @@ export async function GET() {
       prisma.work_schedules.findMany({ where: { deletedAt: null }, select: { id: true, name: true, active: true }, orderBy: { name: "asc" } }),
       prisma.employees.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     ]) : [[], [], [], []];
-    return NextResponse.json({ rows, options: { departments, positions, schedules, managers }, actor, canWrite }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ rows: rows.map(photoAudit), options: { departments, positions, schedules, managers }, actor, canWrite }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return peopleError(error); }
 }
 
 export async function POST(request: Request) {
   try {
     const actor = await peopleActor(["MASTER", "ADMIN", "RH"]);
+    if (Number(request.headers.get("content-length") ?? 0) > 1500000) throw new PeopleError("Foto muito grande", 413);
     const parsed = employeeInput.safeParse(await request.json());
     if (!parsed.success) return validationError(parsed.error);
-    const { id, admissionDate, ...data } = parsed.data;
+    const { id, admissionDate, photoData, ...data } = parsed.data;
+    if (photoData) { try { facePhoto(photoData); } catch (error) { throw new PeopleError((error as Error).message); } }
     const result = await prisma.$transaction(async tx => {
       const before = id ? await tx.employees.findFirst({ where: { id, deletedAt: null } }) : null;
       if (id && !before) throw new PeopleError("Funcionário não encontrado", 404);
@@ -51,10 +54,10 @@ export async function POST(request: Request) {
         }
       }
       if (data.externalIdDevice && await tx.employees.findFirst({ where: { externalIdDevice: data.externalIdDevice, deletedAt: null, ...(id ? { id: { not: id } } : {}) } })) throw new PeopleError("O ID no iDFace já está vinculado a outro funcionário", 409);
-      const write = { ...data, admissionDate: admissionDate ? new Date(`${admissionDate}T00:00:00.000Z`) : null };
+      const write = { ...data, ...(photoData ? { photoUrl: photoData } : {}), admissionDate: admissionDate ? new Date(`${admissionDate}T00:00:00.000Z`) : null };
       const after = id ? await tx.employees.update({ where: { id }, data: write }) : await tx.employees.create({ data: write });
-      await tx.audit_logs.create({ data: { userId: actor.id, actorEmail: actor.email, action: id ? "UPDATE" : "CREATE", entity: "employees", entityId: after.id, before: auditJson(before), after: auditJson(after) } });
-      return after;
+      await tx.audit_logs.create({ data: { userId: actor.id, actorEmail: actor.email, action: id ? "UPDATE" : "CREATE", entity: "employees", entityId: after.id, before: auditJson(before ? photoAudit(before) : null), after: auditJson(photoAudit(after)) } });
+      return photoAudit(after);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     return NextResponse.json(result, { status: id ? 200 : 201 });
   } catch (error) { return peopleError(error); }

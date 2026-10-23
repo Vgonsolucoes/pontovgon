@@ -46,6 +46,7 @@ import {
 import { Suspense } from "react";
 import { CopyCode, CopyTokenButton } from "@/components/integrations/copy-code";
 import { AgentActions } from "@/components/integrations/agent-actions";
+import { AgentRegistration } from "@/components/integrations/agent-registration";
 
 const GITHUB_BASE = "https://github.com/Vgonsolucoes/pontovgon";
 
@@ -484,6 +485,7 @@ export default async function IntegracoesAgentPage() {
 
       <Separator />
 
+      <AgentRegistration />
       <Card>
         <CardHeader className="flex flex-row items-start justify-between flex-wrap gap-2">
           <div>
@@ -533,9 +535,7 @@ function AgentTable({ result }: { result: LoadAgentsResult }) {
           Nenhum VGON PONTO Agent cadastrado.
         </p>
         <p className="text-sm text-slate-600 dark:text-slate-400 max-w-xl mx-auto">
-          Execute <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">npx prisma db seed</code>{" "}
-          no servidor para criar o agent inicial <strong>Agent Local 001 — Sede Vgon</strong> e seu token
-          de autenticação. O token aparecerá nesta tabela após o cadastro.
+          Preencha o formulário de vínculo acima com o computador e o equipamento reais. Depois copie o token gerado para a tela local do Agent, salve e reinicie o serviço.
         </p>
       </div>
     );

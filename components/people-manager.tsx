@@ -3,6 +3,8 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EmployeePhoto } from "@/components/employee-photo";
+import { FaceSyncPanel } from "@/components/integrations/face-sync-panel";
 
 type Row = Record<string, string | boolean | null> & { id: string; name: string };
 type Option = { id: string; name: string; active?: boolean; registration?: string; departmentId?: string | null };
@@ -24,6 +26,9 @@ export function PeopleManager({ module }: { module: "users" | "employees" }) {
   const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [photoKey, setPhotoKey] = useState(0);
+  const [existingPhoto, setExistingPhoto] = useState("");
+  const [photoBusy, setPhotoBusy] = useState(false);
   const load = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
@@ -35,7 +40,7 @@ export function PeopleManager({ module }: { module: "users" | "employees" }) {
     finally { setLoading(false); }
   }, [module]);
   useEffect(() => { void load(); }, [load]);
-  function reset() { setId(""); setDraft(blank(users)); setErrors({}); }
+  function reset() { setId(""); setDraft(blank(users)); setErrors({}); setPhotoKey(key => key + 1); setExistingPhoto(""); }
   function change(key: string, value: string | boolean) {
     setDraft(previous => ({ ...previous, [key]: value, ...(key === "departmentId" ? { positionId: "" } : {}) }));
     setErrors(previous => ({ ...previous, [key]: "" }));
@@ -46,6 +51,7 @@ export function PeopleManager({ module }: { module: "users" | "employees" }) {
     for (const key of Object.keys(values)) if (key !== "password") values[key] = row[key] ?? "";
     if (!users && typeof values.admissionDate === "string") values.admissionDate = values.admissionDate.slice(0, 10);
     setDraft(values);
+    if (!users) { setPhotoKey(key => key + 1); setExistingPhoto(row.hasPhoto ? `/api/people/employees/photo?id=${encodeURIComponent(row.id)}&v=${Date.now()}` : ""); }
     document.getElementById("people-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   async function save(event: FormEvent) {
@@ -78,7 +84,7 @@ export function PeopleManager({ module }: { module: "users" | "employees" }) {
     {loadError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-red-800">{loadError} <Button type="button" variant="outline" onClick={() => void load()}>Tentar novamente</Button></div>}
     {loading && !data && <p role="status">Carregando cadastros…</p>}
     {data?.canWrite && <Card id="people-form"><CardHeader><CardTitle>{id ? (users ? "Editar usuário" : "Editar funcionário") : (users ? "Novo usuário" : "Novo funcionário")}</CardTitle></CardHeader><CardContent>
-      <form onSubmit={save} className="space-y-5"><fieldset disabled={busy} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <form onSubmit={save} className="space-y-5"><fieldset disabled={busy || photoBusy} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {field("name", "Nome completo", true)}
         {users ? <>
           {field("email", "E-mail", true, "email")}
@@ -87,6 +93,7 @@ export function PeopleManager({ module }: { module: "users" | "employees" }) {
           {select("employeeId", "Funcionário vinculado", options("employees", "employeeId").filter(option => option.id === draft.employeeId || !data.rows.some(row => row.employeeId === option.id && row.id !== id)))}
           <label className="flex items-center gap-2 self-end py-2"><input type="checkbox" checked={!!draft.active} disabled={editingSelf} onChange={event => change("active", event.target.checked)} /> Acesso ativo</label>
         </> : <>
+          <EmployeePhoto key={photoKey} existing={existingPhoto} onChange={value => change("photoData", value)} onBusyChange={setPhotoBusy} />
           {field("cpf", "CPF", true, "text", 14)}{field("registration", "Matrícula", true, "text", 80)}{field("email", "E-mail", false, "email")}{field("phone", "Telefone", false, "tel", 40)}{field("admissionDate", "Data de admissão", false, "date")}
           {select("departmentId", "Setor", options("departments", "departmentId"))}
           {select("positionId", "Cargo", options("positions", "positionId").filter(option => { const position = data.options.positions.find(item => item.id === option.id); return !position?.departmentId || position.departmentId === draft.departmentId; }))}
@@ -95,12 +102,13 @@ export function PeopleManager({ module }: { module: "users" | "employees" }) {
           <div>{field("externalIdDevice", "ID do usuário no iDFace", false, "text", 120)}<p className="mt-1 text-xs text-slate-500">Use o ID individual do colaborador no equipamento.</p></div>
           <div className="md:col-span-2 lg:col-span-3"><label htmlFor="people-observations" className="text-sm font-medium">Observações</label><textarea id="people-observations" className={`${selectClass} h-24`} maxLength={2000} value={String(draft.observations ?? "")} onChange={event => change("observations", event.target.value)} />{errors.observations && <p className="text-sm text-red-700">{errors.observations}</p>}</div>
         </>}
-      </fieldset><p className="text-xs text-slate-500">* Campos obrigatórios.{users && " A senha deve ter pelo menos 8 caracteres."}</p><div className="flex gap-3"><Button disabled={busy} type="submit">{busy ? "Salvando…" : "Salvar cadastro"}</Button>{id && <Button disabled={busy} type="button" variant="outline" onClick={reset}>Cancelar edição</Button>}</div></form>
+      </fieldset><p className="text-xs text-slate-500">* Campos obrigatórios.{users && " A senha deve ter pelo menos 8 caracteres."}</p><div className="flex gap-3"><Button disabled={busy || photoBusy} type="submit">{busy ? "Salvando…" : "Salvar cadastro"}</Button>{id && <Button disabled={busy || photoBusy} type="button" variant="outline" onClick={reset}>Cancelar edição</Button>}</div></form>
     </CardContent></Card>}
     <Card><CardHeader><CardTitle>{title} cadastrados</CardTitle></CardHeader><CardContent className="space-y-4"><Input aria-label={`Pesquisar ${title.toLowerCase()}`} placeholder={users ? "Pesquisar nome ou e-mail" : "Pesquisar nome, matrícula ou e-mail"} value={query} onChange={event => setQuery(event.target.value)} />
-      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b"><th className="p-3">Nome</th><th className="p-3">{users ? "E-mail" : "Matrícula"}</th><th className="p-3">{users ? "Perfil" : "ID no iDFace"}</th><th className="p-3">Status</th>{data?.canWrite && <th className="p-3">Ações</th>}</tr></thead><tbody>{visible.map(row => <tr key={row.id} className="border-b"><td className="p-3 font-medium">{row.name}</td><td className="p-3">{String((users ? row.email : row.registration) ?? "—")}</td><td className="p-3">{users ? roleLabels[String(row.role)] : String(row.externalIdDevice ?? "—")}</td><td className="p-3">{users ? (row.active ? "Ativo" : "Inativo") : statusLabels[String(row.status)]}</td>{data?.canWrite && <td className="p-3">{editable(row) && <Button variant="outline" size="sm" disabled={busy} onClick={() => edit(row)}>Editar</Button>}</td>}</tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b"><th className="p-3">Nome</th><th className="p-3">{users ? "E-mail" : "Matrícula"}</th><th className="p-3">{users ? "Perfil" : "ID no iDFace"}</th><th className="p-3">Status</th>{data?.canWrite && <th className="p-3">Ações</th>}</tr></thead><tbody>{visible.map(row => <tr key={row.id} className="border-b"><td className="p-3 font-medium">{row.name}</td><td className="p-3">{String((users ? row.email : row.registration) ?? "—")}</td><td className="p-3">{users ? roleLabels[String(row.role)] : String(row.externalIdDevice ?? "—")}</td><td className="p-3">{users ? (row.active ? "Ativo" : "Inativo") : statusLabels[String(row.status)]}</td>{data?.canWrite && <td className="p-3">{editable(row) && <Button variant="outline" size="sm" disabled={busy || photoBusy} onClick={() => edit(row)}>Editar</Button>}</td>}</tr>)}</tbody></table></div>
       {data && !visible.length && <p className="py-3 text-sm text-slate-500">{data.rows.length ? "Nenhum cadastro corresponde à pesquisa." : `Nenhum ${users ? "usuário" : "funcionário"} cadastrado.`}</p>}
       {data && !data.canWrite && <p className="text-sm text-slate-500">Você pode consultar os funcionários da sua equipe. Alterações são feitas pelo RH ou administrador.</p>}
     </CardContent></Card>
+    {!users && data?.canWrite && <FaceSyncPanel employees={data.rows} />}
   </div>;
 }

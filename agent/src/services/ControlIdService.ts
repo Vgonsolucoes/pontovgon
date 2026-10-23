@@ -4,6 +4,7 @@ import { pino } from "pino";
 import { getDb, getKv, setKv } from "../db/sqlite";
 import { spParts } from "./timezone";
 import { AGENT_VERSION } from "../version";
+import { enrollEmployee } from "./enrollment";
 
 export interface IDFaceTimeEvent {
   externalEventId: string;
@@ -32,6 +33,7 @@ export interface IDFaceStatus {
 }
 
 export interface CommandPayloads {
+  SYNC_EMPLOYEE: Record<string, unknown>;
   SYNC_NOW: Record<string, never>;
   TEST_DEVICE: { ping: boolean };
   REBOOT_DEVICE: { reason?: string };
@@ -173,7 +175,7 @@ export class ControlIdService {
   private async postAuthed<T = unknown>(path: string, body: unknown, retried = false): Promise<T> {
     const session = await this.ensureSession();
     try {
-      const res = await this.http.post(`${path}?session=${encodeURIComponent(session)}`, body);
+      const res = await this.http.post(`${path}?session=${encodeURIComponent(session)}`, body, { timeout: path === "/user_set_image_list.fcgi" ? 30000 : 8000 });
       return res.data as T;
     } catch (e) {
       if (!retried && isSessionError(e)) {
@@ -356,6 +358,8 @@ export class ControlIdService {
     try {
       if (this._mock) return this._mockExecute(cmd);
       switch (cmd.commandType) {
+        case "SYNC_EMPLOYEE":
+          return await enrollEmployee(cmd.payload, this.cfg.deviceId, (path, body) => this.postAuthed(path, body));
         case "SYNC_NOW":
           return { ok: true, result: { skipped: "Sync executado pelo loop principal; comando confirmado." } };
 

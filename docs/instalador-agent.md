@@ -1,6 +1,10 @@
-# Publicação do VGON PONTO Agent 1.0.3
+# Publicação do VGON PONTO Agent 1.0.4
 
-Artefato: `public/downloads/VGON-PONTO-Agent-Setup-1.0.3.exe`. A página `/integracoes/agents` lê o manifesto e disponibiliza o arquivo, versão, tamanho e SHA-256. O executável é distribuído pelo próprio site, sem depender de um link de release externo.
+Artefato: `public/downloads/VGON-PONTO-Agent-Setup-1.0.4.exe`. A página `/integracoes/agents` lê o manifesto e disponibiliza o arquivo, versão, tamanho e SHA-256. O executável é distribuído pelo próprio site, sem depender de um link de release externo.
+
+## Envio de cadastros e fotos na versão 1.0.4
+
+Implementa `SYNC_EMPLOYEE`, com verificação de série física, busca por matrícula, atualização do usuário existente, cadastro da foto e confirmação explícita do resultado. A confirmação é persistida no SQLite para sobreviver à perda de rede ou reinício. O ciclo de comandos impede execuções sobrepostas. O smoke test também carrega o runtime e o módulo de cadastro facial. O fluxo completo está em [sincronizacao-facial.md](sincronizacao-facial.md).
 
 ## Correção do teste iDFace na versão 1.0.3
 

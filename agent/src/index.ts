@@ -41,7 +41,7 @@ function getIps(): string[] {
   return out;
 }
 
-class AgentRuntime {
+export class AgentRuntime {
   cfg: AgentConfig;
   log: Logger;
   ctrl!: ControlIdService;
@@ -269,10 +269,22 @@ class AgentRuntime {
     countStuckEvents(db);
   }
 
+  private commandsBusy = false;
   async commandsTick() {
+    if (this.commandsBusy) return;
+    this.commandsBusy = true;
+    try {
+      const db = getDb(this.cfg.dbPath);
+      const saved = getKv(db, "pending_command_ack");
+      if (saved) {
+        const ack = JSON.parse(saved) as { id: string; result: CommandResult };
+        await this.api.finishCommand(ack.id, ack.result);
+        setKv(db, "pending_command_ack", "");
+      }
     if (this.cmdQueue.length) {
       const cmd = this.cmdQueue.shift()!;
       await this.runOneCommand(cmd);
+      if (getKv(db, "pending_command_ack")) return;
     }
     try {
       const next = await this.api.pollNextCommand();
@@ -280,6 +292,7 @@ class AgentRuntime {
     } catch (e) {
       this.log.warn({ err: e instanceof Error ? e.message : String(e) }, "Poll comandos falhou");
     }
+    } finally { this.commandsBusy = false; }
   }
 
   async runOneCommand(cmd: AgentCommand) {
@@ -290,7 +303,9 @@ class AgentRuntime {
       result = { ok: false, error: e instanceof Error ? e.stack ?? e.message : String(e) };
     }
     try {
+      setKv(getDb(this.cfg.dbPath), "pending_command_ack", JSON.stringify({ id: cmd.id, result }));
       const f = await this.api.finishCommand(cmd.id, result);
+      setKv(getDb(this.cfg.dbPath), "pending_command_ack", "");
       this.log.info({ cmdId: cmd.id, type: cmd.commandType, status: f.command.status, ok: result.ok }, "Comando finalizado");
     } catch (e) {
       this.log.warn({ cmdId: cmd.id, err: e instanceof Error ? e.message : String(e) }, "Comando executado mas PATCH falhou — tentar novamente depois");
@@ -329,4 +344,4 @@ async function main() {
   }
 }
 
-void main();
+if (require.main === module) void main();

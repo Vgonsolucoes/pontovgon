@@ -30,6 +30,7 @@ export const userInput = z.object({
 });
 
 export const employeeInput = z.object({
+  photoData: z.string().max(1400000, "Foto muito grande").optional(),
   id: z.string().cuid().optional(),
   name: z.string().trim().min(2, "Informe o nome completo").max(160),
   cpf: z.string().trim().regex(/^[\d.\-\s]+$/, "CPF inválido").transform(value => value.replace(/\D/g, "")).refine(validCpf, "CPF inválido"),

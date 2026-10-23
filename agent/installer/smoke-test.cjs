@@ -12,5 +12,7 @@ try {
 } finally { db.close(); }
 assert.equal(typeof load('./dist/ui/server.js').startUiServer, 'function');
 assert.equal(typeof load('./dist/services/ControlIdService.js').ControlIdService, 'function');
+assert.equal(typeof load('./dist/services/enrollment.js').enrollEmployee, 'function');
+assert.equal(typeof load('./dist/index.js').AgentRuntime, 'function');
 assert.equal(load('./dist/version.js').AGENT_VERSION, load('./package.json').version);
 console.log('Installer smoke test passed: embedded Node, native SQLite, UI and device client.');
