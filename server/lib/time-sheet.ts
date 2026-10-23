@@ -13,7 +13,7 @@ export async function loadTimeSheet(tx: Prisma.TransactionClient, actor: PeopleA
       const range = { gte: new Date(addDays(start, -1) + "T00:00:00Z"), lte: new Date(addDays(end, 1) + "T00:00:00Z") };
       const [entries, holidays, vacations, leaves] = await Promise.all([
         tx.time_entries.findMany({ where: { employeeId, date: range, status: { not: "EXCLUIDO_LOGICAMENTE" } }, select: { id: true, date: true, time: true, timestamp: true, kind: true, status: true, origin: true, reviewFlags: true }, take: 10001 }),
-        tx.holidays.findMany({ where: { OR: [{ date: range }, { recurring: true }] }, select: { date: true, recurring: true } }),
+        tx.holidays.findMany({ where: { active: true, OR: [{ date: range }, { recurring: true }] }, select: { date: true, recurring: true } }),
         tx.vacations.findMany({ where: { employeeId, status: "APROVADO", startDate: { lte: range.lte }, endDate: { gte: range.gte } }, select: { startDate: true, endDate: true } }),
         tx.leaves.findMany({ where: { employeeId, status: "APROVADO", startDate: { lte: range.lte }, endDate: { gte: range.gte } }, select: { startDate: true, endDate: true, hoursCount: true } }),
       ]);

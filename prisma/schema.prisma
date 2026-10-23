@@ -240,6 +240,7 @@ model devices {
   name              String
   manufacturer      String       @default("Control iD")
   model             String       @default("iDFace")
+  enabled           Boolean      @default(true)
   serialNumber      String       @unique
   firmwareVersion   String?
   firmwareSecBox    String?
@@ -529,6 +530,7 @@ model holidays {
   description String
   scope       String   @default("NACIONAL") // NACIONAL | ESTADUAL | MUNICIPAL | EMPRESARIAL
   recurring   Boolean  @default(true)
+  active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @db.Timestamptz
   updatedAt   DateTime @updatedAt @db.Timestamptz
   @@unique([date, scope])

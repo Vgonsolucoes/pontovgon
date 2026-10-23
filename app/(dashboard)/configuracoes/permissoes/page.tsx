@@ -1,108 +1,27 @@
-import Link from "next/link";
-import { ArrowLeft, Shield, Wrench, Construction, CheckCircle2, BarChart3 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { PeopleManager } from "@/components/people-manager";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireRole } from "@/server/lib/auth";
-
 export const dynamic = "force-dynamic";
-
 export const metadata = { title: "Permissões · VGON PONTO" };
-
-export default async function PlaceholderPage() {
+const rows = [
+  ["Cadastrar usuários e atribuir perfis", "Todos", "Contas não administrativas e a própria conta", "—", "—", "—"],
+  ["Gerenciar funcionários", "Sim", "Sim", "Sim", "Consultar equipe direta", "—"],
+  ["Gerenciar jornadas", "Sim", "Sim", "Sim", "—", "—"],
+  ["Consultar marcações", "Todos", "Todos", "Todos", "Equipe direta", "No próprio espelho"],
+  ["Consultar espelho e banco de horas", "Todos", "Todos", "Todos", "Equipe direta", "Próprio cadastro"],
+  ["Solicitar ajustes", "Todos", "Todos", "Todos", "Equipe direta", "Próprio cadastro"],
+  ["Aprovar ou rejeitar ajustes", "Sim", "Sim", "Sim", "—", "—"],
+  ["Apurar banco, lançar crédito/débito e estornar", "Sim", "Sim", "Sim", "—", "—"],
+  ["Configurar janela e duplicidade", "Sim", "Sim", "—", "—", "—"],
+  ["Gerenciar feriados", "Sim", "Sim", "Sim", "—", "—"],
+  ["Enviar cadastro e foto ao iDFace", "Sim", "Sim", "Sim", "—", "—"],
+  ["Gerenciar dispositivos e sincronizações", "Sim", "Sim", "—", "—", "—"],
+  ["Acessar esta tela de permissões", "Sim", "—", "—", "—", "—"],
+];
+export default async function Page() {
   await requireRole(["MASTER"]);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2 text-slate-500 text-xs mb-1">
-            <Link href="/dashboard" className="hover:text-vgon-blue-600">Dashboard</Link>
-            <span>/</span>
-            <span>Configurações</span>
-            <span>/</span>
-            <span className="text-slate-800 font-medium">Permissões</span>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Shield className="h-6 w-6 text-vgon-blue-600" /> Permissões
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">Gerencie perfis RBAC, permissões granulares por tela e por ação, e atribuição de permissões por perfil.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/dashboard"><ArrowLeft className="h-4 w-4 mr-1.5" /> Voltar</Link>
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="border shadow-sm">
-          <CardHeader className="pb-2">
-            <CardDescription className="text-xs">Status da tela</CardDescription>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Badge variant="warning" className="gap-1 inline-flex items-center">
-                <Construction className="h-3 w-3" /> Em produção (estrutura pronta)
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-slate-500">
-            Rotas, RBAC, layout e navegação configurados. CRUD e integrações sendo implementados nos próximos deploys.
-          </CardContent>
-        </Card>
-        <Card className="border shadow-sm">
-          <CardHeader className="pb-2">
-            <CardDescription className="text-xs">Controle de acesso</CardDescription>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Badge variant="success" className="gap-1 inline-flex items-center">
-                <CheckCircle2 className="h-3 w-3" /> RBAC OK
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-slate-500">
-            Perfil(is) permitido(s): MASTER.
-          </CardContent>
-        </Card>
-        <Card className="border shadow-sm">
-          <CardHeader className="pb-2">
-            <CardDescription className="text-xs">Auditoria</CardDescription>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Badge variant="secondary" className="gap-1 inline-flex items-center">
-                <BarChart3 className="h-3 w-3" /> Habilitada
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-slate-500">
-            Operações críticas (criar/editar/excluir) geram log de auditoria com before/after e responsável.
-          </CardContent>
-        </Card>
-        <Card className="border shadow-sm">
-          <CardHeader className="pb-2">
-            <CardDescription className="text-xs">Implementação</CardDescription>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Badge variant="outline" className="gap-1 inline-flex items-center">
-                <Wrench className="h-3 w-3" /> Placeholder
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-slate-500">
-            Estrutura de CRUD, tabelas e filtros serão ativados nas próximas entregas.
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="border shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Funcionalidades planejadas desta tela</CardTitle>
-          <CardDescription className="text-xs pt-1">Esta página está 100% roteada, acessível e com RBAC aplicado. Os módulos abaixo são as próximas etapas.</CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-slate-600 space-y-2">
-          <p>✅ Rota registrada no Next.js App Router (sem 404).</p>
-          <p>✅ Controle de perfil RBAC (requireRole) aplicado.</p>
-          <p>✅ Layout do AppShell (Sidebar + Topbar) carregando normalmente.</p>
-          <p>✅ Breadcrumb e navegação de volta para Dashboard funcionando.</p>
-          <p>🔜 CRUD / listagem / filtros / exportação (próximos deploys).</p>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  return <div className="space-y-6"><div><h1 className="text-2xl font-bold">Permissões</h1><p className="mt-1 text-sm text-slate-500">Consulte as regras efetivas de cada perfil e gerencie os perfis das contas abaixo.</p></div>
+    <Card><CardHeader><CardTitle>Acesso por perfil</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left">{["Operação", "Master", "Administrador", "RH", "Gestor", "Funcionário"].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{rows.map(([operation,...permissions]) => <tr className="border-b" key={operation}><th scope="row" className="p-3 text-left font-medium">{operation}</th>{permissions.map((permission,index) => <td className="p-3" key={index}>{permission}</td>)}</tr>)}</tbody></table></div><p className="mt-4 text-sm text-slate-500">As regras são verificadas no servidor. O perfil Gestor depende do vínculo com o funcionário responsável pela equipe; Funcionário depende do próprio vínculo. Contas sem vínculo não recebem acesso a dados de outras pessoas. Alterações de perfil são aplicadas nas próximas consultas autenticadas e registradas em auditoria.</p><p className="mt-2 text-sm text-slate-500">Somente Master administra perfis Master/Admin. Não é permitido desativar a própria conta nem alterar o próprio perfil. Os perfis têm permissões fixas; atribua o perfil adequado no cadastro abaixo.</p></CardContent></Card>
+    <PeopleManager module="users" />
+  </div>;
 }

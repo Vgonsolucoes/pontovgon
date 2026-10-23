@@ -47,7 +47,7 @@ export async function POST(req: Request) {
 
     if (!body.deviceUniqueId && !body.deviceSerialNumber) return NextResponse.json({ error: "Identificação do equipamento obrigatória" }, { status: 400 });
     const deviceRecord = await prisma.devices.findFirst({ where: {
-      agentId: auth.agent.id, deletedAt: null,
+      agentId: auth.agent.id, deletedAt: null, enabled: true,
       ...(body.deviceUniqueId ? { deviceUniqueId: body.deviceUniqueId } : {}),
       ...(body.deviceSerialNumber ? { serialNumber: body.deviceSerialNumber } : {}),
     }, select: { id: true, deviceUniqueId: true, serialNumber: true } });

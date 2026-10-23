@@ -12,10 +12,10 @@ export async function GET() {
   try {
     await peopleActor(["MASTER", "ADMIN", "RH"]);
     const [devices, commands] = await Promise.all([
-      prisma.devices.findMany({ where: { deletedAt: null }, select: { id: true, name: true, deviceUniqueId: true, serialNumber: true, agent: { select: { enabled: true, deletedAt: true, version: true, lastHeartbeatAt: true } } }, orderBy: { name: "asc" } }),
+      prisma.devices.findMany({ where: { deletedAt: null }, select: { id: true, name: true, enabled: true, deviceUniqueId: true, serialNumber: true, agent: { select: { enabled: true, deletedAt: true, version: true, lastHeartbeatAt: true } } }, orderBy: { name: "asc" } }),
       prisma.commands.findMany({ where: { commandType: "SYNC_EMPLOYEE" }, select: { id: true, status: true, error: true, createdAt: true, finishedAt: true, payload: true }, orderBy: { createdAt: "desc" }, take: 30 }),
     ]);
-    return NextResponse.json({ devices: devices.map(({ agent, ...device }) => ({ ...device, ready: !!agent?.enabled && !agent.deletedAt && supportsFaceSync(agent.version), online: !!agent?.enabled && isRecentCommunication(agent.lastHeartbeatAt), version: agent?.version ?? null })), commands: commands.map(({ payload, ...command }) => { const p = payload as Record<string, unknown> | null; return { ...command, employeeName: typeof p?.name === "string" ? p.name : "Funcionário", deviceId: p?.deviceId }; }) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ devices: devices.map(({ agent, ...device }) => ({ ...device, ready: device.enabled && !!agent?.enabled && !agent.deletedAt && supportsFaceSync(agent.version), online: device.enabled && !!agent?.enabled && isRecentCommunication(agent.lastHeartbeatAt), version: agent?.version ?? null })), commands: commands.map(({ payload, ...command }) => { const p = payload as Record<string, unknown> | null; return { ...command, employeeName: typeof p?.name === "string" ? p.name : "Funcionário", deviceId: p?.deviceId }; }) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return peopleError(error); }
 }
 
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const { deviceId, employeeIds } = parsed.data;
     const ids = [...new Set(employeeIds)];
     const queued = await prisma.$transaction(async tx => {
-      const device = await tx.devices.findFirst({ where: { id: deviceId, deletedAt: null }, include: { agent: true } });
+      const device = await tx.devices.findFirst({ where: { id: deviceId, deletedAt: null, enabled: true }, include: { agent: true } });
       if (!device?.deviceUniqueId || !device.agentId || !device.agent?.enabled || device.agent.deletedAt) throw new PeopleError("Vincule este equipamento a um Agent ativo na página Agents");
       if (!supportsFaceSync(device.agent.version)) throw new PeopleError("Atualize o Agent para 1.0.4 ou superior e aguarde o primeiro heartbeat");
       const commands = [];

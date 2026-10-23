@@ -11,6 +11,19 @@ await db.exec(`INSERT INTO employees(id,name,cpf,registration,"updatedAt") VALUE
 INSERT INTO devices(id,name,"serialNumber","updatedAt") VALUES ('isolated-device','Equipamento isolado','ISOLATED',now());
 INSERT INTO time_entries(id,"employeeId","deviceId","externalEventId",date,time) VALUES ('original','isolated-employee','isolated-device','event-1','2026-10-19','08:00');`);
 await db.exec(await readFile(new URL('../prisma/migrations/202610230001_attendance_controls/migration.sql', import.meta.url), 'utf8'));
+const catalogMigration = await readFile(new URL('../prisma/migrations/202610230002_devices_holidays/migration.sql', import.meta.url), 'utf8');
+await db.exec(catalogMigration);
+test('calendário oficial importa doze feriados sem facultativos e não duplica na repetição', async () => {
+  const rows = (await db.query('SELECT id,date::text,scope,recurring,active FROM holidays ORDER BY date')).rows;
+  assert.equal(rows.length,12); assert.equal(rows.filter(row => row.scope === 'NACIONAL').length,9); assert.equal(rows.filter(row => row.scope === 'MUNICIPAL').length,3);
+  assert.ok(rows.every(row => row.active && !row.recurring));
+  for (const date of ['2026-02-16','2026-02-17','2026-08-30','2026-12-24','2026-12-31']) assert.ok(!rows.some(row => row.date === date));
+  for (const date of ['2026-03-27','2026-04-03','2026-06-04']) assert.ok(rows.some(row => row.date === date && row.scope === 'MUNICIPAL'));
+  const insert = catalogMigration.slice(catalogMigration.indexOf('INSERT INTO'), catalogMigration.indexOf('UPDATE "hour_bank"'));
+  await db.exec(insert);
+  assert.equal((await db.query('SELECT count(*)::int AS count FROM holidays')).rows[0].count,12);
+  assert.equal((await db.query(`SELECT enabled FROM devices WHERE id='isolated-device'`)).rows[0].enabled,true);
+});
 test('migração preserva evento anterior e mantém unicidade do identificador original', async () => {
   const { rows } = await db.query(`SELECT time,"reviewFlags" FROM time_entries WHERE id='original'`);
   assert.equal(rows[0].time,'08:00'); assert.deepEqual(rows[0].reviewFlags,[]);
