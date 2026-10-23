@@ -11,6 +11,26 @@ type ExtendedUser = User & { role?: UserRole | null; employeeId?: string | null 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(prisma),
+  callbacks: {
+    ...authConfig.callbacks,
+    async jwt({ token, user }) {
+      const id = user?.id ?? token.sub;
+      if (!id) return null;
+      // Existing sessions must honor account deactivation and profile changes.
+      const current = await prisma.users.findFirst({
+        where: { id, active: true, deletedAt: null },
+        select: { id: true, email: true, name: true, role: true, employeeId: true },
+      });
+      if (!current) return null;
+      token.sub = current.id;
+      token.id = current.id;
+      token.email = current.email;
+      token.name = current.name;
+      token.role = current.role;
+      token.employeeId = current.employeeId;
+      return token;
+    },
+  },
   providers: [
     Credentials({
       name: "Credenciais",

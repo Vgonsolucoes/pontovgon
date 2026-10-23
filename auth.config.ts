@@ -56,6 +56,7 @@ export const authConfig: NextAuthConfig = {
       }
       const publicPrefixes = ["/_next", "/favicon", "/api/auth", "/api/agents", "/api/public", "/downloads/"];
       if (nextUrl.pathname === "/" || publicPrefixes.some((p) => nextUrl.pathname.startsWith(p))) return true;
+      if (!isLoggedIn && nextUrl.pathname.startsWith("/api/people/")) return Response.json({ error: "Sua sessão expirou. Entre novamente." }, { status: 401 });
       if (!isLoggedIn) return Response.redirect(new URL("/login", nextUrl));
       return true;
     },
